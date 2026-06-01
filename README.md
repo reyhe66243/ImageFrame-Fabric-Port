@@ -1,51 +1,59 @@
-[![Build Status](https://ci.loohpjames.com/job/ImageFrame/badge/icon)](https://ci.loohpjames.com/job/ImageFrame/) [![Crowdin](https://badges.crowdin.net/imageframe/localized.svg)](https://crowdin.com/project/imageframe)
-# ImageFrame
+# ImageFrame (Fabric Port)
 
-https://www.spigotmc.org/resources/106031/<br>
-https://modrinth.com/plugin/imageframe<br>
-https://hangar.papermc.io/LOOHP/ImageFrame
+A high-performance, server-side-only Fabric port of the popular Spigot plugin **[ImageFrame by LoohpJames](https://www.spigotmc.org/resources/106031/)**. Put images and animated GIFs on maps and walls!
 
-Put images on maps and walls!
+This port has been modernized and optimized for Minecraft 1.21+ (Fabric) while retaining 100% data compatibility with Spigot maps.
 
-More information (screenshots, commands, permissions) about the plugin can be found on the Spigot page linked above.
+---
 
-## Built against Spigot
-Built against [Spigot's API](https://www.spigotmc.org/wiki/buildtools/) (required mc versions are listed on the spigot page above).
-Plugins built against Spigot usually also work with [Paper](https://papermc.io/).
+## ⚠️ Important Disclaimer & Maintenance
 
-## Development Builds
+*   **Support & Maintenance:** This port was created for a private server with friends. As such, **do not expect regular updates, active maintenance, or guaranteed bugfixes**.
+*   **Future Updates:** While support is not guaranteed, critical bugs or compatibility updates might be released if they are needed for our personal server.
+*   **Original Creator Invitation:** If the original author (**LoohpJames**) wishes to adapt, use, or merge any part of this Fabric port code into the official project, they are warmly welcomed and encouraged to do so!
+*   **Fabric Port Developer:** Developed and optimized for Fabric by **[reyhe66243](https://github.com/reyhe66243)**.
+*   **Credits:** Huge credits to [LoohpJames](https://github.com/LOOHP) for the original Spigot plugin design, asset loaders, and architecture.
 
-- [Jenkins](https://ci.loohpjames.com/job/ImageFrame/)
+---
 
-## Maven
-```html
-<repository>
-  <id>loohp-repo</id>
-  <url>https://repo.loohpjames.com/repository</url>
-</repository>
+## ✨ Features & Optimizations
+
+This Fabric port is designed to be **incredibly lightweight** and **server-safe**, running entirely on the server-side with no client-side mods required:
+
+1.  **Dynamic Map Color Engine:**
+    *   Uses a pixel-perfect Mojang NMS color matching system to map image RGB colors to Minecraft's built-in map colors dynamically.
+    *   No hardcoded palette files or inaccurate colors. Parity is absolute.
+2.  **Network Visibility Cache:**
+    *   Optimized for large multiplayer servers! Maps and animation frames are only sent to players holding a map or standing within 32 blocks of an active map frame.
+    *   This eliminates network packet overhead, dramatically reduces bandwidth usage, and prevents clients from lagging due to off-screen animation updates.
+3.  **Invisible Item Frames:**
+    *   Supports placing maps on invisible frames.
+    *   Integrates seamlessly with splash potions of invisibility or area effect clouds containing invisibility. Throwing them on item frames turns them invisible, while breaking or modifying them updates the state correctly.
+4.  **No Client-Side Mod Required:**
+    *   Works entirely server-side! Vanilla clients can connect and enjoy the custom map paintings.
+
+---
+
+## 🛠️ Build & Installation
+
+### Requirements
+*   Java 21 or higher
+*   Minecraft 1.21+ (Fabric Server)
+
+### Compiling from Source
+To compile the Fabric mod jar:
+```bash
+cd fabric
+./gradlew build -x test
 ```
-```html
-<dependency>
-  <groupId>com.loohp</groupId>
-  <artifactId>ImageFrame</artifactId>
-  <version>VERSION</version>
-  <scope>provided</scope>
-</dependency>
-```
-Replace `VERSION` with the version number.
+The compiled jar will be located under `fabric/build/libs/`.
 
-## Official Addons
+---
 
-- [ImageFrameClient](https://github.com/LOOHP/ImageFrameClient) (Complementary client mod for servers with ImageFrame to display HD and full color images)
+## 📄 License & Original Work
 
-## Partnerships
+This project is a derivative work of **ImageFrame** by LoohpJames. In compliance with the original project's license, this port is licensed under the **GNU General Public License v3 (GPLv3)**.
 
-### Server Hosting
-**Use the link or click the banner** below to **get a 25% discount off** your first month when buying any of their gaming servers!<br>
-It also **supports my development**, take it as an alternative way to donate while getting your very own Minecraft server as well!
-
-*P.S. Using the link or clicking the banner rather than the code supports me more! (Costs you no extra!)*
-
-**https://www.bisecthosting.com/loohp**
-
-[![](https://www.bisecthosting.com/partners/custom-banners/96e11ee5-50e4-494f-854d-8c1708813abd.png)](https://www.bisecthosting.com/loohp)
+*   You are free to use, modify, and redistribute this software.
+*   Any derivative works must also be open-source under the GPLv3 license.
+*   The original license text is preserved in the `LICENSE` file.

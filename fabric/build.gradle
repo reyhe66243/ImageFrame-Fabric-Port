@@ -1,0 +1,113 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.15.5'
+    id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.mod_group
+
+repositories {
+    mavenCentral()
+    maven { url = "https://hub.spigotmc.org/nexus/content/repositories/snapshots/" }
+    maven { url = "https://repo.codemc.org/repository/maven-public/" }
+    maven { url = "https://jitpack.io" }
+    maven { url = "https://repo.viaversion.com" }
+    maven { url = "https://repo.loohpjames.com/repository" }
+    maven { url = "https://repo.extendedclip.com/releases/" }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = [
+                'src/main/java',
+                '../common/src/main/java',
+                '../abstraction/src/main/java'
+            ]
+            include 'com/loohp/imageframe/fabric/**'
+            include 'com/loohp/imageframe/ImageFrame.java'
+            include 'com/loohp/platformscheduler/**'
+            include 'com/loohp/imageframe/media/**'
+            include 'com/loohp/imageframe/utils/FileUtils.java'
+            include 'com/loohp/imageframe/utils/UUIDUtils.java'
+            include 'com/loohp/imageframe/utils/UnsafeAccessor.java'
+            include 'com/loohp/imageframe/utils/ImageResolver.java'
+            include 'com/loohp/imageframe/utils/GifReader.java'
+            include 'com/loohp/imageframe/utils/HTTPRequestUtils.java'
+            include 'com/loohp/imageframe/utils/SizeLimitedByteArrayOutputStream.java'
+            include 'com/loohp/imageframe/utils/ThrowingSupplier.java'
+            include 'com/loohp/imageframe/objectholders/CombinedMapItemInfo.java'
+            include 'com/loohp/imageframe/objectholders/FilledMapItemInfo.java'
+
+            // Exclude Spigot's ImageFrame.java from the shared common srcDir compilation
+            exclude { element ->
+                element.file.absolutePath.replace('\\', '/').contains('/common/') && element.name == 'ImageFrame.java'
+            }
+        }
+        resources {
+            srcDirs = [
+                'src/main/resources'
+            ]
+        }
+    }
+}
+
+dependencies {
+    // Minecraft
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    // In Minecraft 26.x, mappings are no longer needed as the jar is natively deobfuscated!
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+
+
+
+    // Fabric API
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    // External dependencies required by ImageFrame logic
+    implementation 'com.zaxxer:HikariCP:7.0.2'
+    implementation 'com.madgag:animated-gif-lib:1.4'
+    implementation 'com.twelvemonkeys.imageio:imageio-webp:3.10.1'
+    implementation 'org.jsoup:jsoup:1.22.2'
+    implementation 'me.carleslc.Simple-YAML:Simple-Yaml:1.8.1'
+
+    // Additional libraries required by common/abstraction
+    implementation 'commons-fileupload:commons-fileupload:1.4'
+
+    // Kyori Adventure (Kyori API is built into modern Paper/Fabric, but we include it for compile safety)
+    implementation 'net.kyori:adventure-api:4.25.0'
+    implementation 'net.kyori:adventure-text-serializer-gson:4.25.0'
+    implementation 'net.kyori:adventure-text-serializer-legacy:4.25.0'
+    implementation 'net.kyori:adventure-text-serializer-plain:4.25.0'
+
+    // Include these dependencies in the final fat jar
+    include 'com.zaxxer:HikariCP:7.0.2'
+    include 'com.madgag:animated-gif-lib:1.4'
+    include 'com.twelvemonkeys.imageio:imageio-webp:3.10.1'
+    include 'org.jsoup:jsoup:1.22.2'
+    include 'me.carleslc.Simple-YAML:Simple-Yaml:1.8.1'
+    include 'commons-fileupload:commons-fileupload:1.4'
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21 // Minecraft 26.x requires Java 21
+}
+
+java {
+    withSourcesJar()
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.archivesBaseName}"}
+    }
+}

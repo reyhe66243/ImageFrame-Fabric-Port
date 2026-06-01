@@ -110,3 +110,8 @@ buildNumber.properties
 
 # Common working directory
 run/
+
+# Gradle and Fabric port build files
+.gradle/
+**/build/
+.loom/

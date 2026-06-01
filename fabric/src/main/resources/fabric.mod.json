@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "imageframe",
+  "version": "${version}",
+  "name": "ImageFrame",
+  "description": "Put images on maps and walls in high-definition!",
+  "authors": [
+    "LoohpJames (Original Author)",
+    "reyhe66243 (Fabric Port)"
+  ],
+  "contact": {
+    "homepage": "https://github.com/reyhe66243",
+    "sources": "https://github.com/reyhe66243"
+  },
+  "license": "GPL-3.0",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "com.loohp.imageframe.fabric.ImageFrameMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.15.11",
+    "minecraft": "26.1.2",
+    "java": ">=21"
+  }
+}
