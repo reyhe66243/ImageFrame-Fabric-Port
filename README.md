@@ -6,7 +6,7 @@ This port has been modernized and optimized for Minecraft 1.21+ (Fabric) while r
 
 ---
 
-## ⚠️ Important Disclaimer & Maintenance
+## Important Disclaimer & Maintenance
 
 *   **Support & Maintenance:** This port was created for a private server with friends. As such, **do not expect regular updates, active maintenance, or guaranteed bugfixes**.
 *   **Future Updates:** While support is not guaranteed, critical bugs or compatibility updates might be released if they are needed for our personal server.
@@ -16,7 +16,7 @@ This port has been modernized and optimized for Minecraft 1.21+ (Fabric) while r
 
 ---
 
-## ✨ Features & Optimizations
+## Features & Optimizations
 
 This Fabric port is designed to be **incredibly lightweight** and **server-safe**, running entirely on the server-side with no client-side mods required:
 
@@ -34,7 +34,7 @@ This Fabric port is designed to be **incredibly lightweight** and **server-safe*
 
 ---
 
-## 🛠️ Build & Installation
+## Build & Installation
 
 ### Requirements
 *   Java 21 or higher
@@ -50,7 +50,7 @@ The compiled jar will be located under `fabric/build/libs/`.
 
 ---
 
-## 📄 License & Original Work
+## License & Original Work
 
 This project is a derivative work of **ImageFrame** by LoohpJames. In compliance with the original project's license, this port is licensed under the **GNU General Public License v3 (GPLv3)**.
 
