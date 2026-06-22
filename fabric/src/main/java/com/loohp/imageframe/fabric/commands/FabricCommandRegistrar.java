@@ -103,16 +103,6 @@ public class FabricCommandRegistrar {
                     .executes(FabricCommandRegistrar::executeRename)
                 )
             )
-            .then(Commands.literal("marker")
-                .then(Commands.argument("args", StringArgumentType.greedyString())
-                    .executes(FabricCommandRegistrar::executeMarker)
-                )
-            )
-            .then(Commands.literal("setaccess")
-                .then(Commands.argument("args", StringArgumentType.greedyString())
-                    .executes(FabricCommandRegistrar::executeSetAccess)
-                )
-            )
         );
     }
 
@@ -682,16 +672,6 @@ public class FabricCommandRegistrar {
         FabricImageMapManager.getInstance().saveMapData(map);
 
         context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Mapa de imágenes \"" + name + "\" renombrado a \"" + newName + "\"."), false);
-        return 1;
-    }
-
-    private static int executeMarker(CommandContext<CommandSourceStack> context) {
-        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Markers no están soportados en el servidor vanilla de Fabric, pero se ha ejecutado el comando con éxito."), false);
-        return 1;
-    }
-
-    private static int executeSetAccess(CommandContext<CommandSourceStack> context) {
-        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Permisos de acceso actualizados."), false);
         return 1;
     }
 
