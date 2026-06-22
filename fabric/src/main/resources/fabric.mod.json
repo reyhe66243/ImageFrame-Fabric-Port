@@ -13,7 +13,7 @@
     "sources": "https://github.com/reyhe66243"
   },
   "license": "GPL-3.0",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
     "server": [
       "com.loohp.imageframe.fabric.ImageFrameMod"
@@ -21,7 +21,7 @@
   },
   "depends": {
     "fabricloader": ">=0.15.11",
-    "minecraft": "26.1.2",
+    "minecraft": ">=26.2",
     "java": ">=21"
   }
 }
