@@ -127,7 +127,7 @@ public class FabricCommandRegistrar {
     // Auto-completado Inteligente e Interactivo para URLs sin comillas
     private static CompletableFuture<Suggestions> suggestCreateArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
@@ -156,7 +156,7 @@ public class FabricCommandRegistrar {
 
     private static CompletableFuture<Suggestions> suggestOverlayArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
@@ -175,7 +175,7 @@ public class FabricCommandRegistrar {
 
     private static CompletableFuture<Suggestions> suggestCloneArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
@@ -200,7 +200,7 @@ public class FabricCommandRegistrar {
 
     private static CompletableFuture<Suggestions> suggestGetArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
@@ -233,7 +233,7 @@ public class FabricCommandRegistrar {
 
     private static CompletableFuture<Suggestions> suggestRenameArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
@@ -255,7 +255,7 @@ public class FabricCommandRegistrar {
 
     private static CompletableFuture<Suggestions> suggestRefreshArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
@@ -277,7 +277,7 @@ public class FabricCommandRegistrar {
 
     private static CompletableFuture<Suggestions> suggestPlaybackArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
-        String[] parts = remaining.split("\\s+");
+        String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
         boolean endsWithSpace = remaining.endsWith(" ");
         int argIndex = parts.length;
         if (!endsWithSpace && remaining.length() > 0) {
