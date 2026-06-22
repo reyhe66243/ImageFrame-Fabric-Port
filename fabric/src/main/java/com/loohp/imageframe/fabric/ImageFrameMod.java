@@ -2,7 +2,7 @@ package com.loohp.imageframe.fabric;
 
 import com.loohp.imageframe.fabric.commands.FabricCommandRegistrar;
 import com.loohp.imageframe.fabric.listeners.FabricEventsRegistrar;
-import net.fabricmc.api.DedicatedServerModInitializer;
+import net.fabricmc.api.ModInitializer;
 import org.simpleyaml.configuration.file.YamlConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,7 +12,7 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
-public class ImageFrameMod implements DedicatedServerModInitializer {
+public class ImageFrameMod implements ModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger("imageframe");
     public static ImageFrameMod instance;
 
@@ -20,7 +20,7 @@ public class ImageFrameMod implements DedicatedServerModInitializer {
     private YamlConfiguration config;
 
     @Override
-    public void onInitializeServer() {
+    public void onInitialize() {
         instance = this;
         LOGGER.info("[ImageFrame] Initializing ImageFrame on Fabric for Minecraft 26.x...");
 

@@ -15,7 +15,7 @@
   "license": "GPL-3.0",
   "environment": "*",
   "entrypoints": {
-    "server": [
+    "main": [
       "com.loohp.imageframe.fabric.ImageFrameMod"
     ]
   },
