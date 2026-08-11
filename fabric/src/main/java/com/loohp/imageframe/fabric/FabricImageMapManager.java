@@ -188,6 +188,37 @@ public class FabricImageMapManager {
         return maps.get(name.toLowerCase());
     }
 
+    /**
+     * Find a map by its storage index.
+     */
+    public FabricImageMap getMapByIndex(int index) {
+        for (FabricImageMap map : maps.values()) {
+            if (map.index == index) {
+                return map;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Find the map that contains a specific Minecraft map ID.
+     */
+    public FabricImageMap getMapByMapId(int mapId) {
+        for (FabricImageMap map : maps.values()) {
+            if (map.mapIds.contains(mapId)) {
+                return map;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get the tile index of a specific map ID within its parent ImageMap.
+     */
+    public int getTileIndex(FabricImageMap map, int mapId) {
+        return map.mapIds.indexOf(mapId);
+    }
+
     private MapItemSavedData getOrCreateMapData(ServerLevel level, int id) {
         MapId mapId = new MapId(id);
         MapItemSavedData data = level.getMapData(mapId);
@@ -708,6 +739,10 @@ public class FabricImageMapManager {
                 return;
             }
 
+            if (map.url == null || map.url.trim().isEmpty()) {
+                throw new Exception("Map has no URL specified and no local image files were found.");
+            }
+
             URLConnection conn = new URL(map.url).openConnection();
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
             conn.setConnectTimeout(10000);
@@ -809,6 +844,13 @@ public class FabricImageMapManager {
                     // Give maps
                     giveMapsToPlayer(notifyPlayer, map, fillFrames);
                 }
+            }
+
+            // Broadcast update to HD clients so they re-fetch textures
+            try {
+                com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastImageUpdate(map);
+            } catch (Exception ex) {
+                ImageFrameMod.LOGGER.debug("[ImageFrame] Could not broadcast HD update (server may not be fully started): " + ex.getMessage());
             }
 
         } catch (Exception e) {
@@ -971,6 +1013,9 @@ public class FabricImageMapManager {
                 }
             }
         }
+
+        // Broadcast frame update signal to HD clients for instant zero-lag HD animation
+        com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastFrameUpdate(map, map.currentFrameIndex);
     }
 
     private net.minecraft.server.players.PlayerList playerListSource() {
@@ -980,5 +1025,12 @@ public class FabricImageMapManager {
     private static net.minecraft.server.players.PlayerList playerListSource;
     public static void setPlayerListSource(net.minecraft.server.players.PlayerList source) {
         playerListSource = source;
+    }
+
+    /**
+     * Static accessor for the player list, used by ImageFrameNetworkHandler.
+     */
+    public static net.minecraft.server.players.PlayerList getPlayerListSourceStatic() {
+        return playerListSource;
     }
 }

@@ -493,8 +493,15 @@ public class FabricCommandRegistrar {
             }
 
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
-            map.url = newUrl;
-            FabricImageMapManager.getInstance().saveMapData(map);
+            if (map == null) {
+                context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+                return 0;
+            }
+
+            if (newUrl != null && !newUrl.trim().isEmpty()) {
+                map.url = newUrl;
+                FabricImageMapManager.getInstance().saveMapData(map);
+            }
 
             context.getSource().sendSuccess(() -> Component.literal("§e[ImageFrame] Refrescando mapa de imágenes \"" + map.name + "\"..."), false);
             FabricImageMapManager.getInstance().createMap(map.name, map.url, map.width, map.height, map.owner, map.dithering, map.isCombined, false, player);

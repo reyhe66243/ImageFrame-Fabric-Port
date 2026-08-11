@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.loohp.imageframe.fabric.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  },
+  "client": [
+    "ClientTooltipComponentMixin",
+    "ItemMixin",
+    "MapRendererMixin",
+    "MapTextureManagerMixin"
+  ]
+}
