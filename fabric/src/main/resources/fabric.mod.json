@@ -3,7 +3,7 @@
   "id": "imageframe",
   "version": "${version}",
   "name": "ImageFrame",
-  "description": "Put images on maps and walls in high-definition!",
+  "description": "Put images on maps and walls in high-definition! Server-side image map management with optional client-side HD rendering.",
   "authors": [
     "LoohpJames (Original Author)",
     "reyhe66243 (Fabric Port)"
@@ -17,11 +17,22 @@
   "entrypoints": {
     "main": [
       "com.loohp.imageframe.fabric.ImageFrameMod"
+    ],
+    "client": [
+      "com.loohp.imageframe.fabric.client.ImageFrameClientHandler"
     ]
   },
+  "mixins": [
+    "imageframe.mixins.json"
+  ],
   "depends": {
     "fabricloader": ">=0.15.11",
+<<<<<<< HEAD
     "minecraft": ">=26.1.2",
+=======
+    "fabric-api": "*",
+    "minecraft": ">=26.2",
+>>>>>>> main
     "java": ">=21"
   }
 }
