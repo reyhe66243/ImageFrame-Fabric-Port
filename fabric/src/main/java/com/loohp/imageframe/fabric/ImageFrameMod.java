@@ -2,6 +2,7 @@ package com.loohp.imageframe.fabric;
 
 import com.loohp.imageframe.fabric.commands.FabricCommandRegistrar;
 import com.loohp.imageframe.fabric.listeners.FabricEventsRegistrar;
+import com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler;
 import net.fabricmc.api.ModInitializer;
 import org.simpleyaml.configuration.file.YamlConfiguration;
 import org.slf4j.Logger;
@@ -45,6 +46,12 @@ public class ImageFrameMod implements ModInitializer {
             LOGGER.error("[ImageFrame] Error loading configuration: ", e);
         }
 
+        // Register HD image protocol payloads (must be done before handlers)
+        ImageFrameNetworkHandler.registerPayloads();
+
+        // Register server-side network handlers for HD client protocol
+        ImageFrameNetworkHandler.registerServerHandlers();
+
         // Register native Fabric commands
         FabricCommandRegistrar.register();
 
@@ -69,3 +76,4 @@ public class ImageFrameMod implements ModInitializer {
         return config;
     }
 }
+
