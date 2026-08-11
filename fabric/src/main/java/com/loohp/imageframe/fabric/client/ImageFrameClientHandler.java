@@ -70,12 +70,30 @@ public class ImageFrameClientHandler implements ClientModInitializer {
                 LOGGER.debug("[ImageFrame] Handshake complete! Server supports HD.");
                 
                 try {
-                    net.minecraft.client.gui.components.toasts.SystemToast.add(
-                        net.minecraft.client.Minecraft.getInstance().gui.toastManager(),
-                        net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.NARRATOR_TOGGLE,
-                        net.minecraft.network.chat.Component.literal("ImageFrame HD").withStyle(net.minecraft.ChatFormatting.GOLD),
-                        net.minecraft.network.chat.Component.literal("Servidor con soporte HD detectado.")
-                    );
+                    Object mc = net.minecraft.client.Minecraft.getInstance();
+                    Object toastMgr = null;
+                    try {
+                        toastMgr = mc.getClass().getMethod("getToastManager").invoke(mc);
+                    } catch (Throwable t1) {
+                        try {
+                            Object gui = mc.getClass().getField("gui").get(mc);
+                            toastMgr = gui.getClass().getMethod("toastManager").invoke(gui);
+                        } catch (Throwable t2) {
+                            try {
+                                Object gui = mc.getClass().getField("gui").get(mc);
+                                toastMgr = gui.getClass().getMethod("getToasts").invoke(gui);
+                            } catch (Throwable ignored) {
+                            }
+                        }
+                    }
+                    if (toastMgr != null) {
+                        net.minecraft.client.gui.components.toasts.SystemToast.add(
+                            (net.minecraft.client.gui.components.toasts.ToastManager) toastMgr,
+                            net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.NARRATOR_TOGGLE,
+                            net.minecraft.network.chat.Component.literal("ImageFrame HD").withStyle(net.minecraft.ChatFormatting.GOLD),
+                            net.minecraft.network.chat.Component.literal("Servidor con soporte HD detectado.")
+                        );
+                    }
                 } catch (Throwable ignored) {
                 }
             });
