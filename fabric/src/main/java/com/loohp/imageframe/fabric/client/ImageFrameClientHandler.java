@@ -75,8 +75,8 @@ public class ImageFrameClientHandler implements ClientModInitializer {
                         net.minecraft.client.gui.components.toasts.SystemToast.add(
                             toastManager,
                             net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.NARRATOR_TOGGLE,
-                            net.minecraft.network.chat.Component.literal("ImageFrame HD").withStyle(net.minecraft.ChatFormatting.GOLD),
-                            net.minecraft.network.chat.Component.literal("Server with HD support detected.")
+                            net.minecraft.network.chat.Component.translatable("imageframe.toast.title").withStyle(net.minecraft.ChatFormatting.GOLD),
+                            net.minecraft.network.chat.Component.translatable("imageframe.toast.server_supported")
                         );
                     }
                 } catch (Throwable ignored) {
