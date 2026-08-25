@@ -3,6 +3,7 @@ package com.loohp.imageframe.fabric.commands;
 import com.loohp.imageframe.fabric.FabricImageMapManager;
 import com.loohp.imageframe.fabric.FabricImageMapManager.FabricImageMap;
 import com.loohp.imageframe.fabric.FabricImageMapManager.PlayerSelection;
+import com.loohp.imageframe.fabric.language.FabricLanguageManager;
 import com.loohp.imageframe.fabric.nms.FabricMapHelper;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -33,10 +34,14 @@ public class FabricCommandRegistrar {
         });
     }
 
+    private static String msg(String key, Object... args) {
+        return FabricLanguageManager.getInstance().get(key, args);
+    }
+
     private static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("imageframe")
             .executes(context -> {
-                context.getSource().sendSuccess(() -> Component.literal("§3ImageFrame §eported to Fabric by Antigravity!\n§6Use §f/imageframe help §6for list of commands."), false);
+                context.getSource().sendSuccess(() -> Component.literal("§3ImageFrame §eported to Fabric!\n§6Use §f/imageframe help §6for a list of commands."), false);
                 return 1;
             })
             .then(Commands.literal("help")
@@ -44,6 +49,32 @@ public class FabricCommandRegistrar {
                     sendHelp(context.getSource());
                     return 1;
                 })
+            )
+            .then(Commands.literal("reload")
+                .executes(context -> {
+                    FabricLanguageManager.getInstance().reloadLanguages();
+                    context.getSource().sendSuccess(() -> Component.literal("§a" + msg("imageframe.messages.reloaded")), false);
+                    return 1;
+                })
+            )
+            .then(Commands.literal("language")
+                .then(Commands.argument("lang", StringArgumentType.word())
+                    .suggests((ctx, builder) -> {
+                        builder.suggest("en_us");
+                        builder.suggest("es_es");
+                        builder.suggest("de_de");
+                        builder.suggest("fr_fr");
+                        builder.suggest("zh_cn");
+                        return builder.buildFuture();
+                    })
+                    .executes(context -> {
+                        String lang = StringArgumentType.getString(context, "lang");
+                        FabricLanguageManager.getInstance().setServerLanguage(lang);
+                        FabricLanguageManager.getInstance().reloadLanguages();
+                        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Language set to: " + lang), false);
+                        return 1;
+                    })
+                )
             )
             .then(Commands.literal("select")
                 .executes(FabricCommandRegistrar::executeSelect)
@@ -108,23 +139,24 @@ public class FabricCommandRegistrar {
 
     private static void sendHelp(CommandSourceStack source) {
         source.sendSuccess(() -> Component.literal(
-            "§3§l=== Comandos de ImageFrame ===\n" +
-            "§b/imageframe select §7- Seleccionar cuadros de ítems\n" +
-            "§b/imageframe create <nombre> <url> <ancho> <alto> [combined] §7- Crear mapa\n" +
-            "§b/imageframe create <nombre> <url> selection §7- Crear en selección\n" +
-            "§b/imageframe overlay <nombre> <url> [selection] §7- Añadir overlay\n" +
-            "§b/imageframe clone <nombre> <nuevo_nombre> [selection|combined] §7- Clonar mapa\n" +
-            "§b/imageframe playback <nombre> <pause|jumpto> [segundos] §7- Controlar animaciones\n" +
-            "§b/imageframe refresh [nombre] [nueva_url] §7- Refrescar mapa desde origen\n" +
-            "§b/imageframe info §7- Ver detalles del mapa en tu mano\n" +
-            "§b/imageframe get <nombre> [selection|combined] §7- Obtener mapas existentes\n" +
-            "§b/imageframe delete <nombre> §7- Eliminar un mapa\n" +
-            "§b/imageframe rename <nombre> <nuevo_nombre> §7- Renombrar mapa\n" +
-            "§b/imageframe list §7- Listar todos los mapas de imágenes"
+            "§3§l=== ImageFrame Commands ===\n" +
+            "§b/imageframe select §7- Select item frames for placement\n" +
+            "§b/imageframe create <name> <url> <width> <height> [combined|separated] §7- Create image map\n" +
+            "§b/imageframe create <name> <url> selection §7- Create on selected frames\n" +
+            "§b/imageframe overlay <name> <url> [selection] §7- Add overlay to maps\n" +
+            "§b/imageframe clone <name> <new_name> [selection|combined] §7- Clone an image map\n" +
+            "§b/imageframe playback <name> <pause|jumpto> [seconds] §7- Control animation playback\n" +
+            "§b/imageframe refresh [name] [new_url] §7- Refresh map from source\n" +
+            "§b/imageframe info §7- View details of the map in your hand\n" +
+            "§b/imageframe get <name> [selection|combined] §7- Get existing image maps\n" +
+            "§b/imageframe delete <name> §7- Delete an image map\n" +
+            "§b/imageframe rename <name> <new_name> §7- Rename an image map\n" +
+            "§b/imageframe list §7- List all image maps\n" +
+            "§b/imageframe language <lang> §7- Change language (en_us, es_es, etc.)\n" +
+            "§b/imageframe reload §7- Reload configuration and languages"
         ), false);
     }
 
-    // Auto-completado Inteligente e Interactivo para URLs sin comillas
     private static CompletableFuture<Suggestions> suggestCreateArgs(CommandContext<CommandSourceStack> context, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining();
         String[] parts = remaining.isEmpty() ? new String[0] : remaining.split("\\s+");
@@ -135,15 +167,15 @@ public class FabricCommandRegistrar {
         }
 
         if (argIndex == 0) {
-            builder.suggest("<nombre>");
+            builder.suggest("<name>");
         } else if (argIndex == 1) {
             builder.suggest(parts[0] + " <url>");
         } else if (argIndex == 2) {
-            builder.suggest(parts[0] + " " + parts[1] + " <ancho>");
+            builder.suggest(parts[0] + " " + parts[1] + " <width>");
             builder.suggest(parts[0] + " " + parts[1] + " selection");
         } else if (argIndex == 3) {
             if (!parts[2].equalsIgnoreCase("selection")) {
-                builder.suggest(parts[0] + " " + parts[1] + " " + parts[2] + " <alto>");
+                builder.suggest(parts[0] + " " + parts[1] + " " + parts[2] + " <height>");
             }
         } else if (argIndex == 4) {
             if (!parts[2].equalsIgnoreCase("selection")) {
@@ -164,7 +196,7 @@ public class FabricCommandRegistrar {
         }
 
         if (argIndex == 0) {
-            builder.suggest("<nombre>");
+            builder.suggest("<name>");
         } else if (argIndex == 1) {
             builder.suggest(parts[0] + " <url>");
         } else if (argIndex == 2) {
@@ -190,7 +222,7 @@ public class FabricCommandRegistrar {
                 }
             }
         } else if (argIndex == 1) {
-            builder.suggest(parts[0] + " <nuevo_nombre>");
+            builder.suggest(parts[0] + " <new_name>");
         } else if (argIndex == 2) {
             builder.suggest(parts[0] + " " + parts[1] + " selection");
             builder.suggest(parts[0] + " " + parts[1] + " combined");
@@ -248,7 +280,7 @@ public class FabricCommandRegistrar {
                 }
             }
         } else if (argIndex == 1) {
-            builder.suggest(parts[0] + " <nuevo_nombre>");
+            builder.suggest(parts[0] + " <new_name>");
         }
         return builder.buildFuture();
     }
@@ -270,7 +302,7 @@ public class FabricCommandRegistrar {
                 }
             }
         } else if (argIndex == 1) {
-            builder.suggest(parts[0] + " <nueva_url>");
+            builder.suggest(parts[0] + " <new_url>");
         }
         return builder.buildFuture();
     }
@@ -296,7 +328,7 @@ public class FabricCommandRegistrar {
             builder.suggest(parts[0] + " jumpto");
         } else if (argIndex == 2) {
             if (parts[1].equalsIgnoreCase("jumpto")) {
-                builder.suggest(parts[0] + " " + parts[1] + " <segundos>");
+                builder.suggest(parts[0] + " " + parts[1] + " <seconds>");
             }
         }
         return builder.buildFuture();
@@ -308,13 +340,13 @@ public class FabricCommandRegistrar {
             boolean active = FabricImageMapManager.getInstance().isSelectionActive(player.getUUID());
             FabricImageMapManager.getInstance().setSelectionActive(player.getUUID(), !active);
             if (!active) {
-                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Modo selección ACTIVADO. Haz clic derecho en el cuadro superior-izquierdo y luego en el inferior-derecho."), false);
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.begin")), false);
             } else {
-                context.getSource().sendSuccess(() -> Component.literal("§c[ImageFrame] Modo selección DESACTIVADO."), false);
+                context.getSource().sendSuccess(() -> Component.literal("§c[ImageFrame] " + msg("imageframe.messages.selection.clear")), false);
             }
             return 1;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -326,7 +358,7 @@ public class FabricCommandRegistrar {
             String[] args = fullArgs.split("\\s+");
 
             if (args.length < 3) {
-                context.getSource().sendFailure(Component.literal("§cUso: /imageframe create <nombre> <url> <ancho> <alto> [combined] o /imageframe create <nombre> <url> selection"));
+                context.getSource().sendFailure(Component.literal("§cUsage: /imageframe create <name> <url> <width> <height> [combined] or /imageframe create <name> <url> selection"));
                 return 0;
             }
 
@@ -338,7 +370,7 @@ public class FabricCommandRegistrar {
                 FabricImageMapManager.getInstance().createMap(name, url, 0, 0, player.getUUID(), "floyd-steinberg", false, true, player);
             } else {
                 if (args.length < 4) {
-                    context.getSource().sendFailure(Component.literal("§cUso: /imageframe create <nombre> <url> <ancho> <alto> [combined]"));
+                    context.getSource().sendFailure(Component.literal("§cUsage: /imageframe create <name> <url> <width> <height> [combined]"));
                     return 0;
                 }
                 int width = Integer.parseInt(args[2]);
@@ -349,10 +381,10 @@ public class FabricCommandRegistrar {
             }
             return 1;
         } catch (NumberFormatException e) {
-            context.getSource().sendFailure(Component.literal("§cEl ancho y alto deben ser números válidos."));
+            context.getSource().sendFailure(Component.literal("§cWidth and height must be valid numbers."));
             return 0;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -364,7 +396,7 @@ public class FabricCommandRegistrar {
             String[] args = fullArgs.split("\\s+");
 
             if (args.length < 2) {
-                context.getSource().sendFailure(Component.literal("§cUso: /imageframe overlay <nombre> <url> [selection]"));
+                context.getSource().sendFailure(Component.literal("§cUsage: /imageframe overlay <name> <url> [selection]"));
                 return 0;
             }
 
@@ -375,7 +407,7 @@ public class FabricCommandRegistrar {
             FabricImageMapManager.getInstance().createMap(name, url, 1, 1, player.getUUID(), "floyd-steinberg", false, selection, player);
             return 1;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -387,7 +419,7 @@ public class FabricCommandRegistrar {
             String[] args = fullArgs.split("\\s+");
 
             if (args.length < 2) {
-                context.getSource().sendFailure(Component.literal("§cUso: /imageframe clone <nombre> <nuevo_nombre> [selection|combined]"));
+                context.getSource().sendFailure(Component.literal("§cUsage: /imageframe clone <name> <new_name> [selection|combined]"));
                 return 0;
             }
 
@@ -398,14 +430,14 @@ public class FabricCommandRegistrar {
 
             FabricImageMap original = FabricImageMapManager.getInstance().getMap(name);
             if (original == null) {
-                context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
                 return 0;
             }
 
             FabricImageMapManager.getInstance().createMap(newName, original.url, original.width, original.height, player.getUUID(), original.dithering, combined || original.isCombined, selection, player);
             return 1;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -415,7 +447,7 @@ public class FabricCommandRegistrar {
         String[] args = fullArgs.split("\\s+");
 
         if (args.length < 2) {
-            context.getSource().sendFailure(Component.literal("§cUso: /imageframe playback <nombre> <pause|jumpto> [segundos]"));
+            context.getSource().sendFailure(Component.literal("§cUsage: /imageframe playback <name> <pause|jumpto> [seconds]"));
             return 0;
         }
 
@@ -424,29 +456,29 @@ public class FabricCommandRegistrar {
 
         FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
         if (map == null) {
-            context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
             return 0;
         }
 
         if (!map.isAnimated) {
-            context.getSource().sendFailure(Component.literal("§cEste mapa de imágenes no está animado."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_an_image_map")));
             return 0;
         }
 
         if (action.equalsIgnoreCase("pause")) {
             map.isPaused = !map.isPaused;
-            context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Animación " + (map.isPaused ? "PAUSADA" : "REANUDADA") + " para " + map.name), false);
+            context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.image_map_toggle_paused")), false);
         } else if (action.equalsIgnoreCase("jumpto") && args.length >= 3) {
             try {
                 double seconds = Double.parseDouble(args[2]);
-                int frame = (int) (seconds * 10.0) % map.framesColors.size(); // Asumiendo aprox. 100ms por frame
+                int frame = (int) (seconds * 10.0) % map.framesColors.size();
                 map.currentFrameIndex = Math.max(0, Math.min(frame, map.framesColors.size() - 1));
-                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Animación saltó al frame: " + map.currentFrameIndex), false);
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.image_map_playback_jump_to", seconds)), false);
             } catch (NumberFormatException e) {
-                context.getSource().sendFailure(Component.literal("§cSegundos inválidos."));
+                context.getSource().sendFailure(Component.literal("§cInvalid seconds format."));
             }
         } else {
-            context.getSource().sendFailure(Component.literal("§cAcción inválida."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_usage")));
         }
         return 1;
     }
@@ -460,15 +492,14 @@ public class FabricCommandRegistrar {
             String newUrl = "";
 
             if (args.length == 0) {
-                // Obtener mapa de la mano
                 ItemStack hand = player.getMainHandItem();
                 if (!hand.is(Items.FILLED_MAP)) {
-                    context.getSource().sendFailure(Component.literal("§cDebes tener un mapa de imágenes en tu mano para refrescarlo."));
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_an_image_map")));
                     return 0;
                 }
                 MapId mapId = hand.get(DataComponents.MAP_ID);
                 if (mapId == null) {
-                    context.getSource().sendFailure(Component.literal("§cMapa de Minecraft inválido."));
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
                     return 0;
                 }
                 for (FabricImageMap m : FabricImageMapManager.getInstance().getMaps().values()) {
@@ -479,14 +510,14 @@ public class FabricCommandRegistrar {
                     }
                 }
                 if (name.isEmpty()) {
-                    context.getSource().sendFailure(Component.literal("§cNo se encontró un mapa de imágenes asociado en tu mano."));
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_an_image_map")));
                     return 0;
                 }
             } else {
                 name = args[0];
                 FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
                 if (map == null) {
-                    context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
                     return 0;
                 }
                 newUrl = args.length >= 2 ? args[1] : map.url;
@@ -494,7 +525,7 @@ public class FabricCommandRegistrar {
 
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
             if (map == null) {
-                context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
                 return 0;
             }
 
@@ -503,11 +534,11 @@ public class FabricCommandRegistrar {
                 FabricImageMapManager.getInstance().saveMapData(map);
             }
 
-            context.getSource().sendSuccess(() -> Component.literal("§e[ImageFrame] Refrescando mapa de imágenes \"" + map.name + "\"..."), false);
+            context.getSource().sendSuccess(() -> Component.literal("§e[ImageFrame] " + msg("imageframe.messages.image_map_refreshed")), false);
             FabricImageMapManager.getInstance().createMap(map.name, map.url, map.width, map.height, map.owner, map.dithering, map.isCombined, false, player);
             return 1;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -518,13 +549,13 @@ public class FabricCommandRegistrar {
             ItemStack hand = player.getMainHandItem();
 
             if (!hand.is(Items.FILLED_MAP)) {
-                context.getSource().sendFailure(Component.literal("§cDebes sostener un mapa de imágenes en tu mano."));
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_an_image_map")));
                 return 0;
             }
 
             MapId mapId = hand.get(DataComponents.MAP_ID);
             if (mapId == null) {
-                context.getSource().sendFailure(Component.literal("§cMapa inválido."));
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
                 return 0;
             }
 
@@ -537,24 +568,24 @@ public class FabricCommandRegistrar {
             }
 
             if (map == null) {
-                context.getSource().sendFailure(Component.literal("§cEste mapa de Minecraft no está asociado a ningún mapa de imágenes."));
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_an_image_map")));
                 return 0;
             }
 
             final FabricImageMap finalMap = map;
             context.getSource().sendSuccess(() -> Component.literal(
-                "§3§l=== Detalles de ImageMap ===\n" +
-                "§6Nombre: §f" + finalMap.name + "\n" +
-                "§6Dimensiones: §f" + finalMap.width + "x" + finalMap.height + " §7(" + finalMap.mapIds.size() + " submapas)\n" +
-                "§6Origen: §f" + finalMap.url + "\n" +
-                "§6Dueño (Creador): §f" + finalMap.owner.toString() + "\n" +
-                "§6Animado: §f" + (finalMap.isAnimated ? "§aSí" : "§cNo") + "\n" +
-                "§6Creado: §f" + new Date(finalMap.creationDate).toString()
+                "§3§l=== ImageMap Info ===\n" +
+                "§6Name: §f" + finalMap.name + "\n" +
+                "§6Size: §f" + finalMap.width + "x" + finalMap.height + " §7(" + finalMap.mapIds.size() + " maps)\n" +
+                "§6URL: §f" + finalMap.url + "\n" +
+                "§6Creator: §f" + finalMap.owner.toString() + "\n" +
+                "§6Animated: §f" + (finalMap.isAnimated ? "§aYes" : "§cNo") + "\n" +
+                "§6Created: §f" + new Date(finalMap.creationDate).toString()
             ), false);
 
             return 1;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -566,7 +597,7 @@ public class FabricCommandRegistrar {
             String[] args = fullArgs.split("\\s+");
 
             if (args.length < 1) {
-                context.getSource().sendFailure(Component.literal("§cUso: /imageframe get <nombre> [selection|combined]"));
+                context.getSource().sendFailure(Component.literal("§cUsage: /imageframe get <name> [selection|combined]"));
                 return 0;
             }
 
@@ -576,15 +607,14 @@ public class FabricCommandRegistrar {
 
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
             if (map == null) {
-                context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
                 return 0;
             }
 
             if (selection) {
-                // Llenar selección
                 PlayerSelection sel = FabricImageMapManager.getInstance().getSelection(player.getUUID());
                 if (sel == null || sel.corner1 == null || sel.corner2 == null) {
-                    context.getSource().sendFailure(Component.literal("§cNo tienes una selección de cuadros activa."));
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.selection.no_selection")));
                     return 0;
                 }
                 List<ItemFrame> frames = FabricImageMapManager.getInstance().getSelectedFrames(player, sel.corner1, sel.corner2);
@@ -594,16 +624,16 @@ public class FabricCommandRegistrar {
                     mapItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(i)));
                     frame.setItem(mapItem);
                 }
-                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] ¡Cuadros de la selección llenados con " + map.name + "!"), false);
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.success", map.width, map.height)), false);
             } else {
-                // Entregar ítems
                 if (combined || map.isCombined) {
                     ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
                     combinedItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
-                    combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6Combined: " + map.name));
+                    combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6ImageMap: " + map.name));
                     List<Component> lore = new ArrayList<>();
-                    lore.add(Component.literal("§7ImageMap Combined: " + map.name));
-                    lore.add(Component.literal("§7Dimensiones: " + map.width + "x" + map.height));
+                    lore.add(Component.literal("§7" + msg("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
+                    lore.add(Component.literal("§8ImageID: " + map.index));
+                    lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
                     combinedItem.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
                     
                     com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.mapIds.get(0));
@@ -617,12 +647,12 @@ public class FabricCommandRegistrar {
                         player.getInventory().add(mapItem);
                     }
                 }
-                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Se han agregado los mapas de \"" + map.name + "\" a tu inventario."), false);
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] ImageMap items added to your inventory."), false);
             }
 
             return 1;
         } catch (Exception e) {
-            context.getSource().sendFailure(Component.literal("§cSolo jugadores pueden ejecutar este comando."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
         }
     }
@@ -632,21 +662,21 @@ public class FabricCommandRegistrar {
         String[] args = fullArgs.split("\\s+");
 
         if (args.length < 1) {
-            context.getSource().sendFailure(Component.literal("§cUso: /imageframe delete <nombre>"));
+            context.getSource().sendFailure(Component.literal("§cUsage: /imageframe delete <name>"));
             return 0;
         }
 
         String name = args[0];
         FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
         if (map == null) {
-            context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
             return 0;
         }
 
         FabricImageMapManager.getInstance().getMaps().remove(name.toLowerCase());
         FabricImageMapManager.getInstance().deleteMapFolder(map);
 
-        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Mapa de imágenes \"" + map.name + "\" eliminado."), false);
+        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.image_map_deleted")), false);
         return 1;
     }
 
@@ -655,7 +685,7 @@ public class FabricCommandRegistrar {
         String[] args = fullArgs.split("\\s+");
 
         if (args.length < 2) {
-            context.getSource().sendFailure(Component.literal("§cUso: /imageframe rename <nombre> <nuevo_nombre>"));
+            context.getSource().sendFailure(Component.literal("§cUsage: /imageframe rename <name> <new_name>"));
             return 0;
         }
 
@@ -664,12 +694,12 @@ public class FabricCommandRegistrar {
 
         FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
         if (map == null) {
-            context.getSource().sendFailure(Component.literal("§cNo existe un mapa de imágenes con ese nombre."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
             return 0;
         }
 
         if (FabricImageMapManager.getInstance().getMap(newName) != null) {
-            context.getSource().sendFailure(Component.literal("§cYa existe un mapa de imágenes con el nuevo nombre."));
+            context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.duplicate_map_name")));
             return 0;
         }
 
@@ -678,16 +708,16 @@ public class FabricCommandRegistrar {
         FabricImageMapManager.getInstance().getMaps().put(newName.toLowerCase(), map);
         FabricImageMapManager.getInstance().saveMapData(map);
 
-        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Mapa de imágenes \"" + name + "\" renombrado a \"" + newName + "\"."), false);
+        context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.image_map_renamed")), false);
         return 1;
     }
 
     private static int executeList(CommandContext<CommandSourceStack> context) {
         if (FabricImageMapManager.getInstance().getMaps().isEmpty()) {
-            context.getSource().sendSuccess(() -> Component.literal("§c[ImageFrame] No hay ningún mapa de imágenes registrado en el servidor."), false);
+            context.getSource().sendSuccess(() -> Component.literal("§c[ImageFrame] No image maps found on the server."), false);
             return 1;
         }
-        StringBuilder builder = new StringBuilder("§3§l=== Mapas Registrados ===\n");
+        StringBuilder builder = new StringBuilder("§3§l=== " + msg("imageframe.messages.map_lookup") + " ===\n");
         for (FabricImageMap map : FabricImageMapManager.getInstance().getMaps().values()) {
             builder.append("§e- ").append(map.name)
                    .append(" §7(").append(map.width).append("x").append(map.height).append(")")

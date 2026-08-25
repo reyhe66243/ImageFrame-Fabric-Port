@@ -61,23 +61,7 @@ public class FabricEventsRegistrar {
     }
 
     public static void register() {
-        // Event 1: Player joins the server (send active map packets)
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ServerPlayer player = handler.getPlayer();
-            LOGGER.info("[ImageFrame] Sending active map updates to player: " + player.getScoreboardName());
-            
-            for (FabricImageMap map : FabricImageMapManager.getInstance().getMaps().values()) {
-                if (map.framesColors != null && !map.framesColors.isEmpty()) {
-                    byte[][] currentColors = map.framesColors.get(map.currentFrameIndex);
-                    for (int i = 0; i < map.mapIds.size(); i++) {
-                        int mapId = map.mapIds.get(i);
-                        FabricMapHelper.sendPacket(player, FabricMapHelper.createMapPacket(mapId, currentColors[i], null));
-                    }
-                }
-            }
-        });
-
-        // Event 2: Item frame interaction (placement or update)
+        // Event 1: Item frame interaction (placement or update)
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (entity instanceof ItemFrame && player instanceof ServerPlayer) {
                 ItemFrame itemFrame = (ItemFrame) entity;

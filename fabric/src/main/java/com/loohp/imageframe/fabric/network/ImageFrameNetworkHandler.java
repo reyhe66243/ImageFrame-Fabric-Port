@@ -79,10 +79,13 @@ public class ImageFrameNetworkHandler {
             hdClients.remove(handler.getPlayer().getUUID());
         });
 
-        // Send handshake on join
+        // Send handshake on join only if client supports the custom channel
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            long handshakeId = ThreadLocalRandom.current().nextLong();
-            ServerPlayNetworking.send(handler.getPlayer(), new ClientboundAcknowledgement(handshakeId));
+            ServerPlayer player = handler.getPlayer();
+            if (ServerPlayNetworking.canSend(player, ClientboundAcknowledgement.ID)) {
+                long handshakeId = ThreadLocalRandom.current().nextLong();
+                ServerPlayNetworking.send(player, new ClientboundAcknowledgement(handshakeId));
+            }
         });
     }
 

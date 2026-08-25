@@ -52,6 +52,9 @@ public class ImageFrameMod implements ModInitializer {
         // Register server-side network handlers for HD client protocol
         ImageFrameNetworkHandler.registerServerHandlers();
 
+        // Initialize language manager
+        com.loohp.imageframe.fabric.language.FabricLanguageManager.getInstance();
+
         // Register native Fabric commands
         FabricCommandRegistrar.register();
 

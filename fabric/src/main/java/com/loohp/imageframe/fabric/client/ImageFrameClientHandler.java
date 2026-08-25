@@ -70,12 +70,15 @@ public class ImageFrameClientHandler implements ClientModInitializer {
                 LOGGER.debug("[ImageFrame] Handshake complete! Server supports HD.");
                 
                 try {
-                    net.minecraft.client.gui.components.toasts.SystemToast.add(
-                        net.minecraft.client.Minecraft.getInstance().gui.toastManager(),
-                        net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.NARRATOR_TOGGLE,
-                        net.minecraft.network.chat.Component.literal("ImageFrame HD").withStyle(net.minecraft.ChatFormatting.GOLD),
-                        net.minecraft.network.chat.Component.literal("Servidor con soporte HD detectado.")
-                    );
+                    net.minecraft.client.gui.components.toasts.ToastManager toastManager = getToastManager(Minecraft.getInstance());
+                    if (toastManager != null) {
+                        net.minecraft.client.gui.components.toasts.SystemToast.add(
+                            toastManager,
+                            net.minecraft.client.gui.components.toasts.SystemToast.SystemToastId.NARRATOR_TOGGLE,
+                            net.minecraft.network.chat.Component.literal("ImageFrame HD").withStyle(net.minecraft.ChatFormatting.GOLD),
+                            net.minecraft.network.chat.Component.literal("Server with HD support detected.")
+                        );
+                    }
                 } catch (Throwable ignored) {
                 }
             });
@@ -261,5 +264,18 @@ public class ImageFrameClientHandler implements ClientModInitializer {
             return null;
         }
         return result.orElse(null);
+    }
+
+    private static net.minecraft.client.gui.components.toasts.ToastManager getToastManager(Minecraft client) {
+        try {
+            Object gui = client.gui;
+            try {
+                return (net.minecraft.client.gui.components.toasts.ToastManager) gui.getClass().getMethod("toastManager").invoke(gui);
+            } catch (NoSuchMethodException e) {
+                return (net.minecraft.client.gui.components.toasts.ToastManager) gui.getClass().getMethod("getToastManager").invoke(gui);
+            }
+        } catch (Throwable t) {
+            return null;
+        }
     }
 }
