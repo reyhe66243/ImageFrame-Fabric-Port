@@ -4,8 +4,8 @@ A high-performance, universal Fabric port of the popular Spigot plugin **[ImageF
 
 This project is a hybrid (Universal) mod: it functions completely server-side for vanilla clients, while offering native HD map rendering, instant HD GIF animation synchronization, and inventory item preview tooltips when installed on the client.
 
-![GIF placement](https://cdn.modrinth.com/data/WCSW1H0K/images/d0c9782c20b378043ec48e9941c6c6f31369eb84.gif)
-![IMAGE placement](https://cdn.modrinth.com/data/WCSW1H0K/images/d0edd0121bab7e180a5ba1db7d0d2497529150ef.gif)
+![GIF placement](https://cdn.eyhe.org/assets/d0c9782c20b378043ec48e9941c6c6f31369eb84.gif)
+![IMAGE placement](https://cdn.eyhe.org/assets/d0edd0121bab7e180a5ba1db7d0d2497529150ef.gif)
 ### Important Disclaimer & Maintenance
 
 *   **Support & Maintenance:** This port was created for a private server with friends. As such, **do not expect regular updates, active maintenance, or guaranteed bugfixes**.
