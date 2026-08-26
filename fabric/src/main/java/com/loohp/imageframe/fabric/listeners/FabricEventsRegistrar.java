@@ -321,12 +321,12 @@ public class FabricEventsRegistrar {
         return false;
     }
 
-    private static List<ItemFrame> findItemFrameGrid(ServerLevel world, ItemFrame originFrame, Direction facing, Direction upDir, Direction leftDir, int width, int height) {
+    private static List<ItemFrame> findItemFrameGrid(ServerLevel world, ItemFrame originFrame, Direction facing, Direction downDir, Direction rightDir, int width, int height) {
         List<ItemFrame> list = new ArrayList<>();
         BlockPos originPos = originFrame.getPos();
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                BlockPos targetPos = originPos.relative(leftDir, -x).relative(upDir, -y);
+                BlockPos targetPos = originPos.relative(rightDir, x).relative(downDir, y);
                 ItemFrame found = getItemFrameAt(world, targetPos, facing);
                 if (found == null) return null;
                 list.add(found);
@@ -352,10 +352,10 @@ public class FabricEventsRegistrar {
             return;
         }
 
-        Direction upDir = Direction.UP;
-        Direction leftDir = facing.getCounterClockWise();
+        Direction downDir = Direction.DOWN;
+        Direction rightDir = facing.getCounterClockWise();
 
-        List<ItemFrame> grid = findItemFrameGrid((ServerLevel) player.level(), originFrame, facing, upDir, leftDir, map.width, map.height);
+        List<ItemFrame> grid = findItemFrameGrid((ServerLevel) player.level(), originFrame, facing, downDir, rightDir, map.width, map.height);
         if (grid == null) {
             player.sendSystemMessage(Component.literal("§c[ImageFrame] There are not enough empty adjacent item frames. A grid of " + map.width + "x" + map.height + " is required."));
             return;
