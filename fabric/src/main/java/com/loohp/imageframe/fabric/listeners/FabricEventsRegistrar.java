@@ -74,8 +74,8 @@ public class FabricEventsRegistrar {
                     return InteractionResult.SUCCESS;
                 }
 
-                // Placement of Combined maps (Paper)
-                if (!handItem.isEmpty() && handItem.is(Items.PAPER)) {
+                // Placement of Combined maps (supports both modern FILLED_MAP and legacy PAPER items)
+                if (!handItem.isEmpty()) {
                     CombinedMapItemInfo combInfo = FabricMapHelper.getCombinedMapItemInfo(handItem);
                     if (combInfo != null) {
                         FabricImageMap map = FabricImageMapManager.getInstance().getMaps().values().stream()
@@ -440,17 +440,19 @@ public class FabricEventsRegistrar {
             frame.setItem(ItemStack.EMPTY);
         }
 
-        ItemStack combinedPaper = new ItemStack(Items.PAPER);
-        combinedPaper.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6Combined: " + map.name));
+        ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
+        combinedItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
+        combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6ImageMap: " + map.name));
+        List<Component> lore = new ArrayList<>();
+        lore.add(Component.literal("§7" + com.loohp.imageframe.fabric.language.FabricLanguageManager.getInstance().get("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
+        lore.add(Component.literal("§8ImageID: " + map.index));
+        lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
+        combinedItem.set(net.minecraft.core.component.DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
         
-        net.minecraft.world.item.component.CustomData pData = combinedPaper.getOrDefault(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.EMPTY);
-        net.minecraft.nbt.CompoundTag pTag = pData.copyTag();
-        pTag.putInt(CombinedMapItemInfo.KEY, map.index);
-        combinedPaper.applyComponents(net.minecraft.core.component.DataComponentPatch.builder()
-            .set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(pTag))
-            .build());
+        CombinedMapItemInfo info = new CombinedMapItemInfo(map.index);
+        FabricMapHelper.withCombinedMapItemInfo(combinedItem, info);
 
-        brokenFrame.spawnAtLocation((ServerLevel) brokenFrame.level(), combinedPaper);
+        brokenFrame.spawnAtLocation((ServerLevel) brokenFrame.level(), combinedItem);
     }
 }
 

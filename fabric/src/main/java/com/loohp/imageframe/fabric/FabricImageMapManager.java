@@ -890,12 +890,13 @@ public class FabricImageMapManager {
 
             // Add lore indicating the size
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.literal("§7ImageMap Combined: " + map.name));
-            lore.add(Component.literal("§7Dimensions: " + map.width + "x" + map.height));
+            lore.add(Component.literal("§7" + com.loohp.imageframe.fabric.language.FabricLanguageManager.getInstance().get("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
+            lore.add(Component.literal("§8ImageID: " + map.index));
+            lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
             combinedItem.set(net.minecraft.core.component.DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
 
             // Custom metadata in NBT
-            com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.mapIds.get(0));
+            com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.index);
             FabricMapHelper.withCombinedMapItemInfo(combinedItem, info);
 
             player.getInventory().add(combinedItem);

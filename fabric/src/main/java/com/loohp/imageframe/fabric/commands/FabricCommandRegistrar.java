@@ -148,7 +148,7 @@ public class FabricCommandRegistrar {
             "§b/imageframe playback <name> <pause|jumpto> [seconds] §7- Control animation playback\n" +
             "§b/imageframe refresh [name] [new_url] §7- Refresh map from source\n" +
             "§b/imageframe info §7- View details of the map in your hand\n" +
-            "§b/imageframe get <name> [selection|combined] §7- Get existing image maps\n" +
+            "§b/imageframe get <name> [selection|combined|separated] §7- Get existing image maps\n" +
             "§b/imageframe delete <name> §7- Delete an image map\n" +
             "§b/imageframe rename <name> <new_name> §7- Rename an image map\n" +
             "§b/imageframe list §7- List all image maps\n" +
@@ -249,6 +249,7 @@ public class FabricCommandRegistrar {
         } else if (argIndex == 1) {
             builder.suggest(parts[0] + " selection");
             builder.suggest(parts[0] + " combined");
+            builder.suggest(parts[0] + " separated");
         }
         return builder.buildFuture();
     }
@@ -604,6 +605,7 @@ public class FabricCommandRegistrar {
             String name = args[0];
             boolean selection = args.length >= 2 && args[1].equalsIgnoreCase("selection");
             boolean combined = args.length >= 2 && args[1].equalsIgnoreCase("combined");
+            boolean separated = args.length >= 2 && args[1].equalsIgnoreCase("separated");
 
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
             if (map == null) {
@@ -625,27 +627,33 @@ public class FabricCommandRegistrar {
                     frame.setItem(mapItem);
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.success", map.width, map.height)), false);
-            } else {
-                if (combined || map.isCombined) {
-                    ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
-                    combinedItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
-                    combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6ImageMap: " + map.name));
-                    List<Component> lore = new ArrayList<>();
-                    lore.add(Component.literal("§7" + msg("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
-                    lore.add(Component.literal("§8ImageID: " + map.index));
-                    lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
-                    combinedItem.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
-                    
-                    com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.mapIds.get(0));
-                    FabricMapHelper.withCombinedMapItemInfo(combinedItem, info);
+            } else if (separated) {
+                for (int id : map.mapIds) {
+                    ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
+                    mapItem.set(DataComponents.MAP_ID, new MapId(id));
+                    player.getInventory().add(mapItem);
+                }
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Separate image maps added to your inventory."), false);
+            } else if (combined || map.isCombined) {
+                ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
+                combinedItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
+                combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6ImageMap: " + map.name));
+                List<Component> lore = new ArrayList<>();
+                lore.add(Component.literal("§7" + msg("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
+                lore.add(Component.literal("§8ImageID: " + map.index));
+                lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
+                combinedItem.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
+                
+                com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.index);
+                FabricMapHelper.withCombinedMapItemInfo(combinedItem, info);
 
-                    player.getInventory().add(combinedItem);
-                } else {
-                    for (int id : map.mapIds) {
-                        ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                        mapItem.set(DataComponents.MAP_ID, new MapId(id));
-                        player.getInventory().add(mapItem);
-                    }
+                player.getInventory().add(combinedItem);
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Combined image map added to your inventory."), false);
+            } else {
+                for (int id : map.mapIds) {
+                    ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
+                    mapItem.set(DataComponents.MAP_ID, new MapId(id));
+                    player.getInventory().add(mapItem);
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] ImageMap items added to your inventory."), false);
             }
