@@ -1,5 +1,6 @@
 package com.loohp.imageframe.fabric;
 
+import com.loohp.imageframe.fabric.language.FabricLanguageManager;
 import com.loohp.imageframe.fabric.nms.FabricMapHelper;
 import com.loohp.imageframe.fabric.utils.FabricMapColorPalette;
 import com.loohp.imageframe.utils.GifReader;
@@ -672,8 +673,50 @@ public class FabricImageMapManager {
         }
 
         if (maps.containsKey(name.toLowerCase())) {
-            player.sendSystemMessage(Component.literal("§c[ImageFrame] An image map with that name already exists."));
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.duplicate_map_name")));
             return;
+        }
+
+        // 1. Check MaxSize
+        int maxSize = ImageFrameMod.instance.getMaxSize();
+        if (maxSize > 0 && (width > maxSize || height > maxSize)) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.oversize", maxSize)));
+            return;
+        }
+
+        // 2. Check URL Whitelist
+        if (ImageFrameMod.instance.isRestrictImageUrl()) {
+            List<String> whitelist = ImageFrameMod.instance.getImageUrlWhitelist();
+            boolean allowed = false;
+            for (String allowedPrefix : whitelist) {
+                if (url.toLowerCase().startsWith(allowedPrefix.toLowerCase())) {
+                    allowed = true;
+                    break;
+                }
+            }
+            if (!allowed) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.url_restricted")));
+                return;
+            }
+        }
+
+        // 3. Check PlayerCreationLimit
+        int creationLimit = ImageFrameMod.instance.getPlayerCreationLimit(player);
+        if (creationLimit >= 0) {
+            long existingCount = maps.values().stream().filter(m -> m.owner.equals(player.getUUID())).count();
+            if (existingCount >= creationLimit) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.player_creation_limit_reached", creationLimit)));
+                return;
+            }
+        }
+
+        // 4. Check & consume empty maps if required
+        int requiredMaps = width * height;
+        if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
+            if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.not_enough_maps", requiredMaps)));
+                return;
+            }
         }
 
         player.sendSystemMessage(Component.literal("§e[ImageFrame] Reserving Map IDs and downloading image..."));

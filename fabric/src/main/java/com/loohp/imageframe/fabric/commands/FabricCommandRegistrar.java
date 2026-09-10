@@ -3,8 +3,10 @@ package com.loohp.imageframe.fabric.commands;
 import com.loohp.imageframe.fabric.FabricImageMapManager;
 import com.loohp.imageframe.fabric.FabricImageMapManager.FabricImageMap;
 import com.loohp.imageframe.fabric.FabricImageMapManager.PlayerSelection;
+import com.loohp.imageframe.fabric.ImageFrameMod;
 import com.loohp.imageframe.fabric.language.FabricLanguageManager;
 import com.loohp.imageframe.fabric.nms.FabricMapHelper;
+import com.loohp.imageframe.fabric.permissions.FabricPermissionManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
@@ -51,13 +53,16 @@ public class FabricCommandRegistrar {
                 })
             )
             .then(Commands.literal("reload")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.RELOAD, 2))
                 .executes(context -> {
+                    ImageFrameMod.instance.reloadConfiguration();
                     FabricLanguageManager.getInstance().reloadLanguages();
                     context.getSource().sendSuccess(() -> Component.literal("§a" + msg("imageframe.messages.reloaded")), false);
                     return 1;
                 })
             )
             .then(Commands.literal("language")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.ADMIN, 2))
                 .then(Commands.argument("lang", StringArgumentType.word())
                     .suggests((ctx, builder) -> {
                         builder.suggest("en_us");
@@ -77,39 +82,47 @@ public class FabricCommandRegistrar {
                 )
             )
             .then(Commands.literal("select")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.SELECT, 0))
                 .executes(FabricCommandRegistrar::executeSelect)
             )
             .then(Commands.literal("info")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.INFO, 0))
                 .executes(FabricCommandRegistrar::executeInfo)
             )
             .then(Commands.literal("list")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.LIST, 0))
                 .executes(FabricCommandRegistrar::executeList)
             )
             .then(Commands.literal("create")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.CREATE, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestCreateArgs)
                     .executes(FabricCommandRegistrar::executeCreate)
                 )
             )
             .then(Commands.literal("overlay")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.OVERLAY, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestOverlayArgs)
                     .executes(FabricCommandRegistrar::executeOverlay)
                 )
             )
             .then(Commands.literal("clone")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.CLONE, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestCloneArgs)
                     .executes(FabricCommandRegistrar::executeClone)
                 )
             )
             .then(Commands.literal("playback")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.PLAYBACK, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestPlaybackArgs)
                     .executes(FabricCommandRegistrar::executePlayback)
                 )
             )
             .then(Commands.literal("refresh")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.REFRESH, 0))
                 .executes(context -> executeRefresh(context, ""))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestRefreshArgs)
@@ -117,18 +130,21 @@ public class FabricCommandRegistrar {
                 )
             )
             .then(Commands.literal("get")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.GET, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestGetArgs)
                     .executes(FabricCommandRegistrar::executeGet)
                 )
             )
             .then(Commands.literal("delete")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.DELETE, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestDeleteArgs)
                     .executes(FabricCommandRegistrar::executeDelete)
                 )
             )
             .then(Commands.literal("rename")
+                .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.RENAME, 0))
                 .then(Commands.argument("args", StringArgumentType.greedyString())
                     .suggests(FabricCommandRegistrar::suggestRenameArgs)
                     .executes(FabricCommandRegistrar::executeRename)
@@ -435,6 +451,11 @@ public class FabricCommandRegistrar {
                 return 0;
             }
 
+            if (!original.owner.equals(player.getUUID()) && !FabricPermissionManager.hasPermission(player, FabricPermissionManager.CREATE_OTHERS, 2) && !FabricPermissionManager.isAdmin(player)) {
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_permission")));
+                return 0;
+            }
+
             FabricImageMapManager.getInstance().createMap(newName, original.url, original.width, original.height, player.getUUID(), original.dithering, combined || original.isCombined, selection, player);
             return 1;
         } catch (Exception e) {
@@ -459,6 +480,13 @@ public class FabricCommandRegistrar {
         if (map == null) {
             context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
             return 0;
+        }
+
+        if (context.getSource().getEntity() instanceof ServerPlayer player) {
+            if (!map.owner.equals(player.getUUID()) && !FabricPermissionManager.isAdmin(player)) {
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_permission")));
+                return 0;
+            }
         }
 
         if (!map.isAnimated) {
@@ -530,6 +558,11 @@ public class FabricCommandRegistrar {
                 return 0;
             }
 
+            if (!map.owner.equals(player.getUUID()) && !FabricPermissionManager.hasPermission(player, FabricPermissionManager.REFRESH_OTHERS, 2) && !FabricPermissionManager.isAdmin(player)) {
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_permission")));
+                return 0;
+            }
+
             if (newUrl != null && !newUrl.trim().isEmpty()) {
                 map.url = newUrl;
                 FabricImageMapManager.getInstance().saveMapData(map);
@@ -598,7 +631,7 @@ public class FabricCommandRegistrar {
             String[] args = fullArgs.split("\\s+");
 
             if (args.length < 1) {
-                context.getSource().sendFailure(Component.literal("§cUsage: /imageframe get <name> [selection|combined]"));
+                context.getSource().sendFailure(Component.literal("§cUsage: /imageframe get <name> [selection|combined|separated]"));
                 return 0;
             }
 
@@ -610,6 +643,12 @@ public class FabricCommandRegistrar {
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
             if (map == null) {
                 context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.invalid_image_map")));
+                return 0;
+            }
+
+            // Check map creator permission
+            if (!map.owner.equals(player.getUUID()) && !FabricPermissionManager.hasPermission(player, FabricPermissionManager.GET_OTHERS, 2) && !FabricPermissionManager.isAdmin(player)) {
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_permission")));
                 return 0;
             }
 
@@ -628,6 +667,13 @@ public class FabricCommandRegistrar {
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.success", map.width, map.height)), false);
             } else if (separated) {
+                int requiredMaps = map.mapIds.size();
+                if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
+                    if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
+                        context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
+                        return 0;
+                    }
+                }
                 for (int id : map.mapIds) {
                     ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
                     mapItem.set(DataComponents.MAP_ID, new MapId(id));
@@ -635,6 +681,13 @@ public class FabricCommandRegistrar {
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Separate image maps added to your inventory."), false);
             } else if (combined || map.isCombined) {
+                if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
+                    int requiredMaps = map.mapIds.size();
+                    if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
+                        context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
+                        return 0;
+                    }
+                }
                 ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
                 combinedItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
                 combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6ImageMap: " + map.name));
@@ -650,6 +703,13 @@ public class FabricCommandRegistrar {
                 player.getInventory().add(combinedItem);
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Combined image map added to your inventory."), false);
             } else {
+                int requiredMaps = map.mapIds.size();
+                if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
+                    if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
+                        context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
+                        return 0;
+                    }
+                }
                 for (int id : map.mapIds) {
                     ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
                     mapItem.set(DataComponents.MAP_ID, new MapId(id));
@@ -681,6 +741,13 @@ public class FabricCommandRegistrar {
             return 0;
         }
 
+        if (context.getSource().getEntity() instanceof ServerPlayer player) {
+            if (!map.owner.equals(player.getUUID()) && !FabricPermissionManager.hasPermission(player, FabricPermissionManager.DELETE_OTHERS, 2) && !FabricPermissionManager.isAdmin(player)) {
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_permission")));
+                return 0;
+            }
+        }
+
         FabricImageMapManager.getInstance().getMaps().remove(name.toLowerCase());
         FabricImageMapManager.getInstance().deleteMapFolder(map);
 
@@ -706,6 +773,13 @@ public class FabricCommandRegistrar {
             return 0;
         }
 
+        if (context.getSource().getEntity() instanceof ServerPlayer player) {
+            if (!map.owner.equals(player.getUUID()) && !FabricPermissionManager.hasPermission(player, FabricPermissionManager.RENAME_OTHERS, 2) && !FabricPermissionManager.isAdmin(player)) {
+                context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_permission")));
+                return 0;
+            }
+        }
+
         if (FabricImageMapManager.getInstance().getMap(newName) != null) {
             context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.duplicate_map_name")));
             return 0;
@@ -725,12 +799,29 @@ public class FabricCommandRegistrar {
             context.getSource().sendSuccess(() -> Component.literal("§c[ImageFrame] No image maps found on the server."), false);
             return 1;
         }
+
+        boolean showAll = true;
+        ServerPlayer player = null;
+        if (context.getSource().getEntity() instanceof ServerPlayer sp) {
+            player = sp;
+            showAll = FabricPermissionManager.hasPermission(player, "imageframe.list.others", 2) || FabricPermissionManager.isAdmin(player);
+        }
+
         StringBuilder builder = new StringBuilder("§3§l=== " + msg("imageframe.messages.map_lookup") + " ===\n");
+        int count = 0;
         for (FabricImageMap map : FabricImageMapManager.getInstance().getMaps().values()) {
+            if (!showAll && player != null && !map.owner.equals(player.getUUID())) {
+                continue;
+            }
+            count++;
             builder.append("§e- ").append(map.name)
                    .append(" §7(").append(map.width).append("x").append(map.height).append(")")
                    .append(map.isAnimated ? " §d[GIF]" : "")
                    .append("\n");
+        }
+        if (count == 0) {
+            context.getSource().sendSuccess(() -> Component.literal("§c[ImageFrame] No image maps found."), false);
+            return 1;
         }
         context.getSource().sendSuccess(() -> Component.literal(builder.toString()), false);
         return 1;

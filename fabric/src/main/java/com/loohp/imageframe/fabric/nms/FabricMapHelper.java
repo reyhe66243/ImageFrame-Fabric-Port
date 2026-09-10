@@ -155,4 +155,35 @@ public class FabricMapHelper {
             .build());
         return itemStack;
     }
+
+    public static int countEmptyMaps(ServerPlayer player) {
+        int count = 0;
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (!stack.isEmpty() && stack.is(net.minecraft.world.item.Items.MAP)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
+    }
+
+    public static boolean removeEmptyMaps(ServerPlayer player, int amount) {
+        if (countEmptyMaps(player) < amount) {
+            return false;
+        }
+        int remaining = amount;
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (!stack.isEmpty() && stack.is(net.minecraft.world.item.Items.MAP)) {
+                int take = Math.min(remaining, stack.getCount());
+                stack.shrink(take);
+                remaining -= take;
+                if (remaining <= 0) {
+                    break;
+                }
+            }
+        }
+        player.containerMenu.broadcastChanges();
+        return true;
+    }
 }
