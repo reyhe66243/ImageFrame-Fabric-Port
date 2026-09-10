@@ -32,23 +32,7 @@ public class ImageFrameMod implements ModInitializer {
         configFolder = new File("config/ImageFrame");
         configFolder.mkdirs();
 
-        try {
-            File configFile = new File(configFolder, "config.yml");
-            if (!configFile.exists()) {
-                // Copy default config from resources
-                try (InputStream in = getClass().getClassLoader().getResourceAsStream("config.yml")) {
-                    if (in != null) {
-                        Files.copy(in, configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                    } else {
-                        configFile.createNewFile();
-                    }
-                }
-            }
-            config = YamlConfiguration.loadConfiguration(configFile);
-            LOGGER.info("[ImageFrame] Configuration config.yml loaded successfully.");
-        } catch (Exception e) {
-            LOGGER.error("[ImageFrame] Error loading configuration: ", e);
-        }
+        loadConfiguration();
 
         // Register HD image protocol payloads (must be done before handlers)
         ImageFrameNetworkHandler.registerPayloads();
@@ -83,22 +67,53 @@ public class ImageFrameMod implements ModInitializer {
         return config;
     }
 
-    public void reloadConfiguration() {
+    public synchronized void reloadConfiguration() {
+        loadConfiguration();
+    }
+
+    public synchronized void loadConfiguration() {
         try {
             File configFile = new File(configFolder, "config.yml");
-            if (!configFile.exists()) {
+            boolean needsCopy = !configFile.exists() || configFile.length() == 0;
+
+            if (configFile.exists() && configFile.length() > 0) {
+                try {
+                    YamlConfiguration existing = YamlConfiguration.loadConfiguration(configFile);
+                    if (!existing.contains("Settings")) {
+                        LOGGER.warn("[ImageFrame] Existing config/ImageFrame/config.yml is missing ImageFrame 'Settings' section (likely an empty file or Floodgate's config). Backing up to config.yml.bak and creating authentic ImageFrame configuration...");
+                        File backupFile = new File(configFolder, "config.yml.bak");
+                        if (backupFile.exists()) {
+                            backupFile.delete();
+                        }
+                        configFile.renameTo(backupFile);
+                        needsCopy = true;
+                    }
+                } catch (Exception ex) {
+                    LOGGER.warn("[ImageFrame] Existing config.yml could not be parsed as YAML. Backing up to config.yml.bak...");
+                    File backupFile = new File(configFolder, "config.yml.bak");
+                    if (backupFile.exists()) {
+                        backupFile.delete();
+                    }
+                    configFile.renameTo(backupFile);
+                    needsCopy = true;
+                }
+            }
+
+            if (needsCopy) {
                 try (InputStream in = getClass().getClassLoader().getResourceAsStream("config.yml")) {
                     if (in != null) {
                         Files.copy(in, configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        LOGGER.info("[ImageFrame] Created authentic ImageFrame config.yml from default resources.");
                     } else {
                         configFile.createNewFile();
                     }
                 }
             }
+
             config = YamlConfiguration.loadConfiguration(configFile);
-            LOGGER.info("[ImageFrame] Configuration reloaded successfully.");
+            LOGGER.info("[ImageFrame] Configuration config.yml loaded successfully.");
         } catch (Exception e) {
-            LOGGER.error("[ImageFrame] Error reloading configuration: ", e);
+            LOGGER.error("[ImageFrame] Error loading configuration: ", e);
         }
     }
 
@@ -134,9 +149,9 @@ public class ImageFrameMod implements ModInitializer {
                     return section.getInt(group, -1);
                 }
             }
-            return section.getInt("default", 10);
+            return section.getInt("default", -1);
         }
-        return 10;
+        return -1;
     }
 }
 
