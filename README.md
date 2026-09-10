@@ -50,8 +50,41 @@ Use **this exact same mod JAR** on both the server and client. Do **not** use th
 
 ### Mod Compatibility & Optimization Notes
 
-### ImmediatelyFast Compatibility Warning
 If you use **ImmediatelyFast**, you must disable its map atlas optimization feature:
 *   Set `"map_atlas_generation": false` inside your `config/immediatelyfast.json` file.
 *   **Reason:** ImmediatelyFast's `map_atlas_generation` forces all map textures into a low-resolution 128x128 atlas, which overrides and crops HD textures. Disabling `map_atlas_generation` allows ImageFrame to render in full HD while ImmediatelyFast continues optimizing 99% of your other graphics performance (fonts, HUD, signs, GUI, buffers).
 *   This mod includes automatic detection logic to attempt disabling this setting at launch.
+---
+
+### Configuration & Permissions
+
+ImageFrame on Fabric features a streamlined, fully functional `config/ImageFrame/config.yml` and 1:1 permission parity with the original Spigot plugin.
+
+#### Key Configuration Options
+* **`RequireEmptyMaps`:** Require survival players to hold empty maps (`width * height`) to create or retrieve image maps.
+* **`MaxSize`:** Limit map dimensions (in blocks) to prevent server lag.
+* **`PlayerCreationLimit`:** Limit the maximum number of maps each player or group can create.
+* **`RestrictImageUrl`:** Domain whitelist (e.g. Imgur, Discord CDN) to restrict where players can download images from.
+* **`CombinedByDefault`:** Automatically give combined map items instead of separate map tiles when running `/imageframe get <name>`.
+* **`InvisibleFrame`:** Configure survival potion splash conversions for invisible item frames.
+
+#### Permissions & LuckPerms
+Compatible with **LuckPerms** via `fabric-permissions-api-v1` and native Minecraft OP levels (user commands default to Level 0 / all players):
+
+| Command / Feature | Permission Node | Default Access |
+| :--- | :--- | :--- |
+| `/imageframe create` | `imageframe.create` | All players |
+| `/imageframe get` | `imageframe.get` | All players (own maps) |
+| Manage others' maps | `imageframe.get.others`, `imageframe.delete.others` | OP Level 2 |
+| `/imageframe delete` | `imageframe.delete` | All players (own maps) |
+| `/imageframe rename` | `imageframe.rename` | All players (own maps) |
+| `/imageframe refresh` | `imageframe.refresh` | All players (own maps) |
+| `/imageframe playback` | `imageframe.playback` | All players |
+| `/imageframe select` | `imageframe.select` | All players |
+| `/imageframe list` | `imageframe.list` | All players (shows own maps) |
+| View all server maps | `imageframe.list.others` | OP Level 2 |
+| Map creation limit tier | `imageframe.createlimit.<group>` | Custom tiers in config |
+| Unlimited map creation | `imageframe.createlimit.unlimited` | OP Level 2 |
+| Full admin bypass | `imageframe.admin` | OP Level 2 |
+| `/imageframe reload` | `imageframe.reload` | OP Level 2 |
+| `/imageframe language` | `imageframe.admin` | OP Level 2 |
