@@ -137,6 +137,26 @@ public class ImageFrameMod implements ModInitializer {
         return config != null ? config.getLong("Settings.MaxImageFileSize", 52428800L) : 52428800L;
     }
 
+    public int getMaxProcessingTime() {
+        return config != null ? config.getInt("Settings.MaxProcessingTime", 60) : 60;
+    }
+
+    public boolean isCombinedByDefault() {
+        return config != null ? config.getBoolean("Settings.CombinedByDefault", false) : false;
+    }
+
+    public int getInvisibleFrameMaxConversions() {
+        return config != null ? config.getInt("InvisibleFrame.MaxConversionsPerSplash", 8) : 8;
+    }
+
+    public boolean isGlowEmptyFrames() {
+        return config != null ? config.getBoolean("InvisibleFrame.GlowEmptyFrames", true) : true;
+    }
+
+    public String getDateFormat() {
+        return config != null ? config.getString("Settings.DateFormat", "dd/MM/yyyy HH:mm:ss zzz") : "dd/MM/yyyy HH:mm:ss zzz";
+    }
+
     public int getPlayerCreationLimit(ServerPlayer player) {
         if (config == null) return -1;
         if (FabricPermissionManager.hasPermission(player, "imageframe.createlimit.unlimited", 2)) {

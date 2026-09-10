@@ -221,14 +221,22 @@ public class FabricEventsRegistrar {
                                             }
                                         }
                                         if (hasInvis) {
-                                            net.minecraft.world.phys.AABB box = entity.getBoundingBox().inflate(4.0, 2.0, 4.0);
-                                            for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
-                                                ItemStack stack = itemEntity.getItem();
-                                                if (!stack.isEmpty() && (stack.is(Items.ITEM_FRAME) || stack.is(Items.GLOW_ITEM_FRAME))) {
-                                                    if (!FabricImageMapManager.isInvisibleItemFrame(stack)) {
-                                                        ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack);
-                                                        itemEntity.setItem(invisibleStack);
-                                                        world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+                                            int maxConversions = ImageFrameMod.instance.getInvisibleFrameMaxConversions();
+                                            if (maxConversions != 0) {
+                                                int converted = 0;
+                                                net.minecraft.world.phys.AABB box = entity.getBoundingBox().inflate(4.0, 2.0, 4.0);
+                                                for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+                                                    if (maxConversions > 0 && converted >= maxConversions) {
+                                                        break;
+                                                    }
+                                                    ItemStack stack = itemEntity.getItem();
+                                                    if (!stack.isEmpty() && (stack.is(Items.ITEM_FRAME) || stack.is(Items.GLOW_ITEM_FRAME))) {
+                                                        if (!FabricImageMapManager.isInvisibleItemFrame(stack)) {
+                                                            ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack);
+                                                            itemEntity.setItem(invisibleStack);
+                                                            world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+                                                            converted++;
+                                                        }
                                                     }
                                                 }
                                             }
@@ -242,14 +250,22 @@ public class FabricEventsRegistrar {
                     } else if (entity instanceof net.minecraft.world.entity.AreaEffectCloud) {
                         net.minecraft.world.entity.AreaEffectCloud cloud = (net.minecraft.world.entity.AreaEffectCloud) entity;
                         if (cloudHasInvisibility(cloud)) {
-                            net.minecraft.world.phys.AABB box = cloud.getBoundingBox();
-                            for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
-                                ItemStack stack = itemEntity.getItem();
-                                if (!stack.isEmpty() && (stack.is(Items.ITEM_FRAME) || stack.is(Items.GLOW_ITEM_FRAME))) {
-                                    if (!FabricImageMapManager.isInvisibleItemFrame(stack)) {
-                                        ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack);
-                                        itemEntity.setItem(invisibleStack);
-                                        world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+                            int maxConversions = ImageFrameMod.instance.getInvisibleFrameMaxConversions();
+                            if (maxConversions != 0) {
+                                int converted = 0;
+                                net.minecraft.world.phys.AABB box = cloud.getBoundingBox();
+                                for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+                                    if (maxConversions > 0 && converted >= maxConversions) {
+                                        break;
+                                    }
+                                    ItemStack stack = itemEntity.getItem();
+                                    if (!stack.isEmpty() && (stack.is(Items.ITEM_FRAME) || stack.is(Items.GLOW_ITEM_FRAME))) {
+                                        if (!FabricImageMapManager.isInvisibleItemFrame(stack)) {
+                                            ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack);
+                                            itemEntity.setItem(invisibleStack);
+                                            world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+                                            converted++;
+                                        }
                                     }
                                 }
                             }

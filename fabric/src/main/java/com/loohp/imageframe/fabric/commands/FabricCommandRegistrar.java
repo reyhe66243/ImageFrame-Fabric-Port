@@ -614,7 +614,7 @@ public class FabricCommandRegistrar {
                 "§6URL: §f" + finalMap.url + "\n" +
                 "§6Creator: §f" + finalMap.owner.toString() + "\n" +
                 "§6Animated: §f" + (finalMap.isAnimated ? "§aYes" : "§cNo") + "\n" +
-                "§6Created: §f" + new Date(finalMap.creationDate).toString()
+                "§6Created: §f" + formatDate(finalMap.creationDate)
             ), false);
 
             return 1;
@@ -637,7 +637,7 @@ public class FabricCommandRegistrar {
 
             String name = args[0];
             boolean selection = args.length >= 2 && args[1].equalsIgnoreCase("selection");
-            boolean combined = args.length >= 2 && args[1].equalsIgnoreCase("combined");
+            boolean combined = args.length >= 2 ? args[1].equalsIgnoreCase("combined") : ImageFrameMod.instance.isCombinedByDefault();
             boolean separated = args.length >= 2 && args[1].equalsIgnoreCase("separated");
 
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
@@ -825,5 +825,13 @@ public class FabricCommandRegistrar {
         }
         context.getSource().sendSuccess(() -> Component.literal(builder.toString()), false);
         return 1;
+    }
+
+    private static String formatDate(long timestamp) {
+        try {
+            return new java.text.SimpleDateFormat(ImageFrameMod.instance.getDateFormat()).format(new Date(timestamp));
+        } catch (Exception e) {
+            return new Date(timestamp).toString();
+        }
     }
 }

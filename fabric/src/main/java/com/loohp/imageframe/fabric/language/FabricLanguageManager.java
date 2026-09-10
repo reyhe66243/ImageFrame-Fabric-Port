@@ -46,6 +46,13 @@ public class FabricLanguageManager {
 
     public void loadServerConfig() {
         try {
+            if (ImageFrameMod.instance != null && ImageFrameMod.instance.getConfig() != null) {
+                String cfgLang = ImageFrameMod.instance.getConfig().getString("Settings.Language");
+                if (cfgLang != null && !cfgLang.trim().isEmpty()) {
+                    this.serverLanguage = cfgLang.trim().toLowerCase();
+                    return;
+                }
+            }
             File configFile = new File(ImageFrameMod.instance.getConfigFolder(), "config.json");
             if (configFile.exists()) {
                 try (Reader reader = Files.newBufferedReader(configFile.toPath(), StandardCharsets.UTF_8)) {
@@ -78,6 +85,12 @@ public class FabricLanguageManager {
     public void setServerLanguage(String lang) {
         this.serverLanguage = lang;
         saveServerConfig();
+        if (ImageFrameMod.instance != null && ImageFrameMod.instance.getConfig() != null) {
+            ImageFrameMod.instance.getConfig().set("Settings.Language", lang);
+            try {
+                ImageFrameMod.instance.getConfig().save(new File(ImageFrameMod.instance.getConfigFolder(), "config.yml"));
+            } catch (Exception ignored) {}
+        }
     }
 
     public String getServerLanguage() {

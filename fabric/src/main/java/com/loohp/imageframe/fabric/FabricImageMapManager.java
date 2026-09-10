@@ -139,7 +139,7 @@ public class FabricImageMapManager {
         ItemStack item = itemFrame.getItem();
         if (item.isEmpty()) {
             itemFrame.setInvisible(false);
-            itemFrame.setGlowingTag(true);
+            itemFrame.setGlowingTag(ImageFrameMod.instance.isGlowEmptyFrames());
         } else {
             itemFrame.setInvisible(true);
             itemFrame.setGlowingTag(false);
@@ -788,8 +788,15 @@ public class FabricImageMapManager {
 
             URLConnection conn = new URL(map.url).openConnection();
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(10000);
+            int timeout = ImageFrameMod.instance.getMaxProcessingTime() * 1000;
+            conn.setConnectTimeout(timeout);
+            conn.setReadTimeout(timeout);
+
+            long maxFileSize = ImageFrameMod.instance.getMaxImageFileSize();
+            long len = conn.getContentLengthLong();
+            if (len > 0 && maxFileSize > 0 && len > maxFileSize) {
+                throw new Exception("Image file size (" + len + " bytes) exceeds configured limit (" + maxFileSize + " bytes).");
+            }
 
             // Attempt to detect if it's a GIF
             boolean isGif = map.url.toLowerCase().contains(".gif") || map.url.toLowerCase().contains("gif");
@@ -798,7 +805,7 @@ public class FabricImageMapManager {
 
             try (InputStream in = conn.getInputStream()) {
                 if (isGif) {
-                    List<GifReader.ImageFrame> frames = GifReader.readGif(in, com.loohp.imageframe.ImageFrame.maxImageFileSize).get();
+                    List<GifReader.ImageFrame> frames = GifReader.readGif(in, (int) Math.min(Integer.MAX_VALUE, maxFileSize)).get();
                     for (GifReader.ImageFrame f : frames) {
                         images.add(f.getImage());
                         delays.add(f.getDelay());
