@@ -64,14 +64,17 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     // External dependencies required by ImageFrame logic
-    implementation 'com.zaxxer:HikariCP:7.0.2'
     implementation 'com.madgag:animated-gif-lib:1.4'
-    implementation 'com.twelvemonkeys.imageio:imageio-webp:3.10.1'
     implementation 'org.jsoup:jsoup:1.22.2'
     implementation 'me.carleslc.Simple-YAML:Simple-Yaml:1.8.1'
 
-    // Additional libraries required by common/abstraction
-    implementation 'commons-fileupload:commons-fileupload:1.4'
+    // TwelveMonkeys ImageIO WebP and its required companion libraries
+    implementation 'com.twelvemonkeys.imageio:imageio-webp:3.10.1'
+    implementation 'com.twelvemonkeys.imageio:imageio-core:3.10.1'
+    implementation 'com.twelvemonkeys.imageio:imageio-metadata:3.10.1'
+    implementation 'com.twelvemonkeys.common:common-lang:3.10.1'
+    implementation 'com.twelvemonkeys.common:common-io:3.10.1'
+    implementation 'com.twelvemonkeys.common:common-image:3.10.1'
 
     // Kyori Adventure (Kyori API is built into modern Paper/Fabric, but we include it for compile safety)
     implementation 'net.kyori:adventure-api:4.25.0'
@@ -80,12 +83,15 @@ dependencies {
     implementation 'net.kyori:adventure-text-serializer-plain:4.25.0'
 
     // Include these dependencies in the final fat jar
-    include 'com.zaxxer:HikariCP:7.0.2'
     include 'com.madgag:animated-gif-lib:1.4'
-    include 'com.twelvemonkeys.imageio:imageio-webp:3.10.1'
     include 'org.jsoup:jsoup:1.22.2'
     include 'me.carleslc.Simple-YAML:Simple-Yaml:1.8.1'
-    include 'commons-fileupload:commons-fileupload:1.4'
+    include 'com.twelvemonkeys.imageio:imageio-webp:3.10.1'
+    include 'com.twelvemonkeys.imageio:imageio-core:3.10.1'
+    include 'com.twelvemonkeys.imageio:imageio-metadata:3.10.1'
+    include 'com.twelvemonkeys.common:common-lang:3.10.1'
+    include 'com.twelvemonkeys.common:common-io:3.10.1'
+    include 'com.twelvemonkeys.common:common-image:3.10.1'
 }
 
 processResources {
