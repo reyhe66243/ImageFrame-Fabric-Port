@@ -15,7 +15,9 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.level.Level;
@@ -185,5 +187,43 @@ public class FabricMapHelper {
         }
         player.containerMenu.broadcastChanges();
         return true;
+    }
+
+    /**
+     * Gives an item to the player, dropping it at their feet if the inventory is full.
+     */
+    public static void giveItemOrDrop(ServerPlayer player, ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        if (!player.getInventory().add(stack)) {
+            net.minecraft.world.entity.item.ItemEntity dropped = new net.minecraft.world.entity.item.ItemEntity(
+                    player.level(), player.getX(), player.getY() + 0.5, player.getZ(), stack);
+            player.level().addFreshEntity(dropped);
+        }
+    }
+
+    /**
+     * Fills empty item frames with the given map IDs.
+     * Spigot parity: occupied frames are left untouched and their map item is given to the player instead.
+     *
+     * @return true if at least one frame was already occupied
+     */
+    public static boolean fillItemFrames(ServerPlayer player, List<ItemFrame> frames, List<Integer> mapIds) {
+        boolean occupiedFound = false;
+        int tiles = Math.min(frames.size(), mapIds.size());
+        for (int i = 0; i < tiles; i++) {
+            ItemFrame frame = frames.get(i);
+            ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
+            mapItem.set(DataComponents.MAP_ID, new MapId(mapIds.get(i)));
+
+            if (!frame.getItem().isEmpty()) {
+                giveItemOrDrop(player, mapItem);
+                occupiedFound = true;
+                continue;
+            }
+            frame.setItem(mapItem);
+        }
+        return occupiedFound;
     }
 }

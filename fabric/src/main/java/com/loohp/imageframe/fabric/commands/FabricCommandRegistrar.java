@@ -25,7 +25,9 @@ import net.minecraft.world.level.saveddata.maps.MapId;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 public class FabricCommandRegistrar {
@@ -65,11 +67,9 @@ public class FabricCommandRegistrar {
                 .requires(source -> FabricPermissionManager.hasPermission(source, FabricPermissionManager.ADMIN, 2))
                 .then(Commands.argument("lang", StringArgumentType.word())
                     .suggests((ctx, builder) -> {
-                        builder.suggest("en_us");
-                        builder.suggest("es_es");
-                        builder.suggest("de_de");
-                        builder.suggest("fr_fr");
-                        builder.suggest("zh_cn");
+                        for (String lang : FabricLanguageManager.getInstance().getAvailableLanguages()) {
+                            builder.suggest(lang);
+                        }
                         return builder.buildFuture();
                     })
                     .executes(context -> {
@@ -384,7 +384,9 @@ public class FabricCommandRegistrar {
             String arg2 = args[2];
 
             if (arg2.equalsIgnoreCase("selection")) {
-                FabricImageMapManager.getInstance().createMap(name, url, 0, 0, player.getUUID(), "floyd-steinberg", false, true, player);
+                // Spigot parity: combinedByDefault can still turn a selection creation into a combined item
+                boolean combined = combinedMode(args, 3);
+                return FabricImageMapManager.getInstance().createMap(name, url, 0, 0, player.getUUID(), "floyd-steinberg", combined, true, player) ? 1 : 0;
             } else {
                 if (args.length < 4) {
                     context.getSource().sendFailure(Component.literal("§cUsage: /imageframe create <name> <url> <width> <height> [combined]"));
@@ -392,11 +394,10 @@ public class FabricCommandRegistrar {
                 }
                 int width = Integer.parseInt(args[2]);
                 int height = Integer.parseInt(args[3]);
-                boolean combined = args.length >= 5 && args[4].equalsIgnoreCase("combined");
+                boolean combined = combinedMode(args, 4);
 
-                FabricImageMapManager.getInstance().createMap(name, url, width, height, player.getUUID(), "floyd-steinberg", combined, false, player);
+                return FabricImageMapManager.getInstance().createMap(name, url, width, height, player.getUUID(), "floyd-steinberg", combined, false, player) ? 1 : 0;
             }
-            return 1;
         } catch (NumberFormatException e) {
             context.getSource().sendFailure(Component.literal("§cWidth and height must be valid numbers."));
             return 0;
@@ -421,8 +422,7 @@ public class FabricCommandRegistrar {
             String url = args[1];
             boolean selection = args.length >= 3 && args[2].equalsIgnoreCase("selection");
 
-            FabricImageMapManager.getInstance().createMap(name, url, 1, 1, player.getUUID(), "floyd-steinberg", false, selection, player);
-            return 1;
+            return FabricImageMapManager.getInstance().createOverlayMap(name, url, player, selection) ? 1 : 0;
         } catch (Exception e) {
             context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
@@ -442,8 +442,12 @@ public class FabricCommandRegistrar {
 
             String name = args[0];
             String newName = args[1];
-            boolean combined = args.length >= 3 && args[2].equalsIgnoreCase("combined");
-            boolean selection = args.length >= 3 && args[2].equalsIgnoreCase("selection");
+            String mode = args.length >= 3 ? args[2] : "";
+            boolean selection = mode.equalsIgnoreCase("selection");
+            // Spigot parity: the original map's combined flag is not inherited, the config default applies
+            boolean combined = ImageFrameMod.instance.isCombinedByDefault()
+                    ? !mode.equalsIgnoreCase("separated")
+                    : mode.equalsIgnoreCase("combined");
 
             FabricImageMap original = FabricImageMapManager.getInstance().getMap(name);
             if (original == null) {
@@ -456,8 +460,21 @@ public class FabricCommandRegistrar {
                 return 0;
             }
 
-            FabricImageMapManager.getInstance().createMap(newName, original.url, original.width, original.height, player.getUUID(), original.dithering, combined || original.isCombined, selection, player);
-            return 1;
+            if (selection) {
+                PlayerSelection sel = FabricImageMapManager.getInstance().getSelection(player.getUUID());
+                if (sel == null || sel.corner1 == null || sel.corner2 == null) {
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.selection.no_selection")));
+                    return 0;
+                }
+                FabricImageMapManager manager = FabricImageMapManager.getInstance();
+                List<ItemFrame> frames = manager.getSelectedFrames(player, sel.corner1, sel.corner2);
+                if (manager.getSelectionWidth(frames) != original.width || manager.getSelectionHeight(frames) != original.height) {
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.selection.incorrect_size", original.width, original.height)));
+                    return 0;
+                }
+            }
+
+            return FabricImageMapManager.getInstance().createMap(newName, original.url, original.width, original.height, player.getUUID(), original.dithering, combined, selection, player) ? 1 : 0;
         } catch (Exception e) {
             context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
             return 0;
@@ -500,8 +517,33 @@ public class FabricCommandRegistrar {
         } else if (action.equalsIgnoreCase("jumpto") && args.length >= 3) {
             try {
                 double seconds = Double.parseDouble(args[2]);
-                int frame = (int) (seconds * 10.0) % map.framesColors.size();
-                map.currentFrameIndex = Math.max(0, Math.min(frame, map.framesColors.size() - 1));
+                int frameCount = map.framesColors.size();
+                if (frameCount <= 0) {
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_an_image_map")));
+                    return 0;
+                }
+
+                // Walk the real per-frame durations instead of assuming a fixed frame rate
+                double total = 0;
+                for (int i = 0; i < frameCount; i++) {
+                    total += frameDurationSeconds(map, i);
+                }
+                double target = total > 0 ? seconds % total : 0;
+                if (target < 0) {
+                    target += total;
+                }
+                double elapsed = 0;
+                int frame = 0;
+                for (int i = 0; i < frameCount; i++) {
+                    elapsed += frameDurationSeconds(map, i);
+                    if (target < elapsed) {
+                        frame = i;
+                        break;
+                    }
+                }
+
+                map.currentFrameIndex = frame;
+                map.lastFrameUpdate = System.currentTimeMillis();
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.image_map_playback_jump_to", seconds)), false);
             } catch (NumberFormatException e) {
                 context.getSource().sendFailure(Component.literal("§cInvalid seconds format."));
@@ -563,13 +605,9 @@ public class FabricCommandRegistrar {
                 return 0;
             }
 
-            if (newUrl != null && !newUrl.trim().isEmpty()) {
-                map.url = newUrl;
-                FabricImageMapManager.getInstance().saveMapData(map);
-            }
-
-            context.getSource().sendSuccess(() -> Component.literal("§e[ImageFrame] " + msg("imageframe.messages.image_map_refreshed")), false);
-            FabricImageMapManager.getInstance().createMap(map.name, map.url, map.width, map.height, map.owner, map.dithering, map.isCombined, false, player);
+            // Re-downloads and re-renders the existing map in place (same name, size and map IDs).
+            // The success/failure feedback is sent asynchronously when the download finishes.
+            FabricImageMapManager.getInstance().refreshMap(map, player, newUrl);
             return 1;
         } catch (Exception e) {
             context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.no_console")));
@@ -636,9 +674,15 @@ public class FabricCommandRegistrar {
             }
 
             String name = args[0];
-            boolean selection = args.length >= 2 && args[1].equalsIgnoreCase("selection");
-            boolean combined = args.length >= 2 ? args[1].equalsIgnoreCase("combined") : ImageFrameMod.instance.isCombinedByDefault();
-            boolean separated = args.length >= 2 && args[1].equalsIgnoreCase("separated");
+            String mode = args.length >= 2 ? args[1].toLowerCase() : "";
+            boolean selection = mode.equals("selection");
+            // Spigot parity: the config default applies unless "combined"/"separated" is explicit
+            boolean combined;
+            if (ImageFrameMod.instance.isCombinedByDefault()) {
+                combined = !mode.equals("separated");
+            } else {
+                combined = mode.equals("combined");
+            }
 
             FabricImageMap map = FabricImageMapManager.getInstance().getMap(name);
             if (map == null) {
@@ -652,42 +696,32 @@ public class FabricCommandRegistrar {
                 return 0;
             }
 
+            FabricImageMapManager manager = FabricImageMapManager.getInstance();
+            List<ItemFrame> selectedFrames = null;
             if (selection) {
-                PlayerSelection sel = FabricImageMapManager.getInstance().getSelection(player.getUUID());
+                PlayerSelection sel = manager.getSelection(player.getUUID());
                 if (sel == null || sel.corner1 == null || sel.corner2 == null) {
                     context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.selection.no_selection")));
                     return 0;
                 }
-                List<ItemFrame> frames = FabricImageMapManager.getInstance().getSelectedFrames(player, sel.corner1, sel.corner2);
-                for (int i = 0; i < Math.min(frames.size(), map.mapIds.size()); i++) {
-                    ItemFrame frame = frames.get(i);
-                    ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                    mapItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(i)));
-                    frame.setItem(mapItem);
+                selectedFrames = manager.getSelectedFrames(player, sel.corner1, sel.corner2);
+                if (manager.getSelectionWidth(selectedFrames) != map.width || manager.getSelectionHeight(selectedFrames) != map.height) {
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.selection.incorrect_size", map.width, map.height)));
+                    return 0;
                 }
-                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.success", map.width, map.height)), false);
-            } else if (separated) {
+            }
+
+            // Spigot parity: empty maps are consumed for every mode, including selection
+            if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
                 int requiredMaps = map.mapIds.size();
-                if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
-                    if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
-                        context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
-                        return 0;
-                    }
+                if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
+                    return 0;
                 }
-                for (int id : map.mapIds) {
-                    ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                    mapItem.set(DataComponents.MAP_ID, new MapId(id));
-                    player.getInventory().add(mapItem);
-                }
-                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Separate image maps added to your inventory."), false);
-            } else if (combined || map.isCombined) {
-                if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
-                    int requiredMaps = map.mapIds.size();
-                    if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
-                        context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
-                        return 0;
-                    }
-                }
+            }
+
+            // Spigot parity: combined mode takes precedence over selection filling
+            if (combined) {
                 ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
                 combinedItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
                 combinedItem.set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal("§6ImageMap: " + map.name));
@@ -696,24 +730,22 @@ public class FabricCommandRegistrar {
                 lore.add(Component.literal("§8ImageID: " + map.index));
                 lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
                 combinedItem.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
-                
+
                 com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.index);
                 FabricMapHelper.withCombinedMapItemInfo(combinedItem, info);
 
-                player.getInventory().add(combinedItem);
+                FabricMapHelper.giveItemOrDrop(player, combinedItem);
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Combined image map added to your inventory."), false);
-            } else {
-                int requiredMaps = map.mapIds.size();
-                if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
-                    if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
-                        context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.not_enough_maps", requiredMaps)));
-                        return 0;
-                    }
+            } else if (selectedFrames != null) {
+                if (FabricMapHelper.fillItemFrames(player, selectedFrames, map.mapIds)) {
+                    context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.item_frame_occupied")));
                 }
+                context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.success", map.width, map.height)), false);
+            } else {
                 for (int id : map.mapIds) {
                     ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
                     mapItem.set(DataComponents.MAP_ID, new MapId(id));
-                    player.getInventory().add(mapItem);
+                    FabricMapHelper.giveItemOrDrop(player, mapItem);
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] ImageMap items added to your inventory."), false);
             }
@@ -750,6 +782,31 @@ public class FabricCommandRegistrar {
 
         FabricImageMapManager.getInstance().getMaps().remove(name.toLowerCase());
         FabricImageMapManager.getInstance().deleteMapFolder(map);
+
+        // Tell HD clients to release the cached textures for this map
+        try {
+            com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastImageUpdate(map);
+        } catch (Exception ignored) {
+        }
+
+        // Spigot parity: replace maps of the deleted image map in the player's inventory with empty maps
+        if (context.getSource().getEntity() instanceof ServerPlayer deletePlayer) {
+            Set<Integer> deletedIds = new HashSet<>(map.mapIds);
+            boolean changed = false;
+            for (int i = 0; i < deletePlayer.getInventory().getContainerSize(); i++) {
+                ItemStack stack = deletePlayer.getInventory().getItem(i);
+                if (!stack.isEmpty() && stack.is(Items.FILLED_MAP)) {
+                    MapId mapId = stack.get(DataComponents.MAP_ID);
+                    if (mapId != null && deletedIds.contains(mapId.id())) {
+                        deletePlayer.getInventory().setItem(i, new ItemStack(Items.MAP, stack.getCount()));
+                        changed = true;
+                    }
+                }
+            }
+            if (changed) {
+                deletePlayer.containerMenu.broadcastChanges();
+            }
+        }
 
         context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.image_map_deleted")), false);
         return 1;
@@ -825,6 +882,38 @@ public class FabricCommandRegistrar {
         }
         context.getSource().sendSuccess(() -> Component.literal(builder.toString()), false);
         return 1;
+    }
+
+    /**
+     * Computes the "combined" flag the same way the Spigot plugin does:
+     * the config default applies unless an explicit combined/separated token is present.
+     */
+    private static boolean combinedMode(String[] args, int startIndex) {
+        boolean separated = false;
+        boolean explicitCombined = false;
+        for (int i = startIndex; i < args.length; i++) {
+            if (args[i].equalsIgnoreCase("separated")) {
+                separated = true;
+            }
+            if (args[i].equalsIgnoreCase("combined")) {
+                explicitCombined = true;
+            }
+        }
+        if (ImageFrameMod.instance.isCombinedByDefault()) {
+            return !separated;
+        }
+        return explicitCombined;
+    }
+
+    private static double frameDurationSeconds(FabricImageMap map, int frameIndex) {
+        List<Integer> delays = map.framesDelays;
+        if (delays != null && frameIndex < delays.size()) {
+            int delay = delays.get(frameIndex);
+            if (delay > 0) {
+                return delay / 1000.0;
+            }
+        }
+        return 0.1; // default 100ms per frame
     }
 
     private static String formatDate(long timestamp) {

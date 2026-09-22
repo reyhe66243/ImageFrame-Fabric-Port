@@ -203,55 +203,87 @@ public class FabricLanguageManager {
 
     private void saveDefaultEnUs() {
         File enUsFile = new File(languageFolder, "en_us.json");
-        if (enUsFile.exists()) return;
 
-        JsonObject en = new JsonObject();
-        en.addProperty("imageframe.messages.reloaded", "ImageFrame has been reloaded!");
-        en.addProperty("imageframe.messages.resync", "Performing resync! See console for details.");
-        en.addProperty("imageframe.messages.storage_migration", "Performing storage migration! See console for details.");
-        en.addProperty("imageframe.messages.image_map_processing", "ImageMap is being processed, please wait!");
-        en.addProperty("imageframe.messages.image_map_processing_action_bar", "ImageMap %1$s is being processed%2$s");
-        en.addProperty("imageframe.messages.image_map_queued_action_bar", "ImageMap %1$s is currently queued (%2$s Remaining)");
-        en.addProperty("imageframe.messages.image_map_created", "ImageMap has been created!");
-        en.addProperty("imageframe.messages.image_map_refreshed", "ImageMap has been refreshed!");
-        en.addProperty("imageframe.messages.image_map_deleted", "ImageMap had been deleted!");
-        en.addProperty("imageframe.messages.image_map_renamed", "ImageMap had been renamed!");
-        en.addProperty("imageframe.messages.image_map_toggle_paused", "Toggled ImageMap playback pause!");
-        en.addProperty("imageframe.messages.image_map_playback_jump_to", "Jumped to position at %s seconds!");
-        en.addProperty("imageframe.messages.invalid_overlay_map", "Overlay only works on Vanilla Minecraft maps and without duplicates in selection!");
-        en.addProperty("imageframe.messages.unable_to_load_map", "ImageMap cannot be loaded, there is a problem while reading the image.");
-        en.addProperty("imageframe.messages.unknown_error", "An unknown error had occurred.");
-        en.addProperty("imageframe.messages.image_over_max_file_size", "ImageMap cannot be loaded as it is over the max file size allowed. (%s bytes)");
-        en.addProperty("imageframe.messages.not_an_image_map", "That is not an ImageMap.");
-        en.addProperty("imageframe.messages.no_permission", "You do not have permission to do that!");
-        en.addProperty("imageframe.messages.no_console", "This command can only be ran by players!");
-        en.addProperty("imageframe.messages.player_not_found", "This player cannot be found!");
-        en.addProperty("imageframe.messages.invalid_usage", "Invalid Usage!");
-        en.addProperty("imageframe.messages.not_enough_maps", "You do not have %s maps!");
-        en.addProperty("imageframe.messages.oversize", "That is too big! Max size for a map is %s.");
-        en.addProperty("imageframe.messages.url_restricted", "That URL is restricted and cannot be used to create image maps.");
-        en.addProperty("imageframe.messages.player_creation_limit_reached", "You can only create %s maps at once! Delete some to create new ones.");
-        en.addProperty("imageframe.messages.duplicate_map_name", "You've already created an image map with that name!");
-        en.addProperty("imageframe.messages.map_lookup", "List of image maps:");
-        en.addProperty("imageframe.messages.item_frame_occupied", "Failed to place or remove some maps on selected ItemFrame.");
-        en.addProperty("imageframe.messages.not_enough_space", "Unable to place Combined ImageMap as there is not enough room.");
-        en.addProperty("imageframe.messages.invalid_image_map", "This image map had likely already been deleted.");
-        en.addProperty("imageframe.messages.selection.begin", "Right click an Item Frame to select corner 1 and 2.");
-        en.addProperty("imageframe.messages.selection.clear", "Leaving selection mode.");
-        en.addProperty("imageframe.messages.selection.corner1", "Selected Item Frame corner 1.");
-        en.addProperty("imageframe.messages.selection.corner2", "Selected Item Frame corner 2.");
-        en.addProperty("imageframe.messages.selection.invalid", "Invalid selection!");
-        en.addProperty("imageframe.messages.selection.oversize", "Oversize selection! Max size for a map is %s.");
-        en.addProperty("imageframe.messages.selection.success", "Selected %1$s x %2$s Item Frames!");
-        en.addProperty("imageframe.messages.selection.no_selection", "You don't have a valid selection yet.");
-        en.addProperty("imageframe.messages.selection.incorrect_size", "Your selection's size does not match, %1$s x %2$s required.");
-        en.addProperty("imageframe.settings.combined_map_item.name", "ImageMap - %s (%s x %s)");
-        en.addProperty("imageframe.settings.combined_map_item.lore.1", "Right Click on Item Frames of size %s x %s to place ImageMap.");
+        JsonObject defaults = new JsonObject();
+        defaults.addProperty("imageframe.messages.reloaded", "ImageFrame has been reloaded!");
+        defaults.addProperty("imageframe.messages.resync", "Performing resync! See console for details.");
+        defaults.addProperty("imageframe.messages.storage_migration", "Performing storage migration! See console for details.");
+        defaults.addProperty("imageframe.messages.image_map_processing", "ImageMap is being processed, please wait!");
+        defaults.addProperty("imageframe.messages.image_map_processing_action_bar", "ImageMap %1$s is being processed%2$s");
+        defaults.addProperty("imageframe.messages.image_map_queued_action_bar", "ImageMap %1$s is currently queued (%2$s Remaining)");
+        defaults.addProperty("imageframe.messages.image_map_created", "ImageMap has been created!");
+        defaults.addProperty("imageframe.messages.image_map_refreshed", "ImageMap has been refreshed!");
+        defaults.addProperty("imageframe.messages.image_map_deleted", "ImageMap had been deleted!");
+        defaults.addProperty("imageframe.messages.image_map_renamed", "ImageMap had been renamed!");
+        defaults.addProperty("imageframe.messages.image_map_toggle_paused", "Toggled ImageMap playback pause!");
+        defaults.addProperty("imageframe.messages.image_map_playback_jump_to", "Jumped to position at %s seconds!");
+        defaults.addProperty("imageframe.messages.invalid_overlay_map", "Overlay only works on Vanilla Minecraft maps and without duplicates in selection!");
+        defaults.addProperty("imageframe.messages.unable_to_load_map", "ImageMap cannot be loaded, there is a problem while reading the image.");
+        defaults.addProperty("imageframe.messages.unknown_error", "An unknown error had occurred.");
+        defaults.addProperty("imageframe.messages.image_over_max_file_size", "ImageMap cannot be loaded as it is over the max file size allowed. (%s bytes)");
+        defaults.addProperty("imageframe.messages.not_an_image_map", "That is not an ImageMap.");
+        defaults.addProperty("imageframe.messages.no_permission", "You do not have permission to do that!");
+        defaults.addProperty("imageframe.messages.no_console", "This command can only be ran by players!");
+        defaults.addProperty("imageframe.messages.player_not_found", "This player cannot be found!");
+        defaults.addProperty("imageframe.messages.invalid_usage", "Invalid Usage!");
+        defaults.addProperty("imageframe.messages.invalid_map_size", "Width and height must be at least 1.");
+        defaults.addProperty("imageframe.messages.not_enough_maps", "You do not have %s maps!");
+        defaults.addProperty("imageframe.messages.oversize", "That is too big! Max size for a map is %s.");
+        defaults.addProperty("imageframe.messages.url_restricted", "That URL is restricted and cannot be used to create image maps.");
+        defaults.addProperty("imageframe.messages.player_creation_limit_reached", "You can only create %s maps at once! Delete some to create new ones.");
+        defaults.addProperty("imageframe.messages.duplicate_map_name", "You've already created an image map with that name!");
+        defaults.addProperty("imageframe.messages.map_lookup", "List of image maps:");
+        defaults.addProperty("imageframe.messages.item_frame_occupied", "Failed to place or remove some maps on selected ItemFrame.");
+        defaults.addProperty("imageframe.messages.not_enough_space", "Unable to place Combined ImageMap as there is not enough room.");
+        defaults.addProperty("imageframe.messages.invalid_image_map", "This image map had likely already been deleted.");
+        defaults.addProperty("imageframe.messages.selection.begin", "Right click an Item Frame to select corner 1 and 2.");
+        defaults.addProperty("imageframe.messages.selection.clear", "Leaving selection mode.");
+        defaults.addProperty("imageframe.messages.selection.corner1", "Selected Item Frame corner 1.");
+        defaults.addProperty("imageframe.messages.selection.corner2", "Selected Item Frame corner 2.");
+        defaults.addProperty("imageframe.messages.selection.invalid", "Invalid selection!");
+        defaults.addProperty("imageframe.messages.selection.oversize", "Oversize selection! Max size for a map is %s.");
+        defaults.addProperty("imageframe.messages.selection.success", "Selected %1$s x %2$s Item Frames!");
+        defaults.addProperty("imageframe.messages.selection.no_selection", "You don't have a valid selection yet.");
+        defaults.addProperty("imageframe.messages.selection.incorrect_size", "Your selection's size does not match, %1$s x %2$s required.");
+        defaults.addProperty("imageframe.settings.combined_map_item.name", "ImageMap - %s (%s x %s)");
+        defaults.addProperty("imageframe.settings.combined_map_item.lore.1", "Right Click on Item Frames of size %s x %s to place ImageMap.");
+
+        JsonObject merged = new JsonObject();
+        if (enUsFile.exists()) {
+            try (Reader reader = Files.newBufferedReader(enUsFile.toPath(), StandardCharsets.UTF_8)) {
+                JsonObject existing = GSON.fromJson(reader, JsonObject.class);
+                if (existing != null) {
+                    for (Map.Entry<String, JsonElement> entry : existing.entrySet()) {
+                        merged.add(entry.getKey(), entry.getValue());
+                    }
+                }
+            } catch (Exception e) {
+                LOGGER.error("[ImageFrame] Error reading existing en_us.json: ", e);
+            }
+        }
+
+        boolean changed = !enUsFile.exists();
+        for (Map.Entry<String, JsonElement> entry : defaults.entrySet()) {
+            if (!merged.has(entry.getKey())) {
+                merged.add(entry.getKey(), entry.getValue());
+                changed = true;
+            }
+        }
+        if (!changed) return;
 
         try (Writer writer = Files.newBufferedWriter(enUsFile.toPath(), StandardCharsets.UTF_8)) {
-            GSON.toJson(en, writer);
+            GSON.toJson(merged, writer);
         } catch (Exception e) {
             LOGGER.error("[ImageFrame] Error writing default en_us.json: ", e);
         }
+    }
+
+    /**
+     * Languages currently available (bundled defaults + downloaded translations).
+     */
+    public Set<String> getAvailableLanguages() {
+        Set<String> languages = new TreeSet<>(translations.keySet());
+        languages.add("en_us");
+        return languages;
     }
 }

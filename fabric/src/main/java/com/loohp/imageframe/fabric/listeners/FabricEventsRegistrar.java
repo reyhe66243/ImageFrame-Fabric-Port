@@ -340,12 +340,11 @@ public class FabricEventsRegistrar {
         return false;
     }
 
-    private static List<ItemFrame> findItemFrameGrid(ServerLevel world, ItemFrame originFrame, Direction facing, Direction downDir, Direction rightDir, int width, int height) {
+    private static List<ItemFrame> collectItemFrameGrid(ServerLevel world, BlockPos topLeft, Direction facing, Direction rowDir, Direction colDir, int width, int height) {
         List<ItemFrame> list = new ArrayList<>();
-        BlockPos originPos = originFrame.getPos();
         for (int y = 0; y < height; y++) {
             for (int x = 0; x < width; x++) {
-                BlockPos targetPos = originPos.relative(rightDir, x).relative(downDir, y);
+                BlockPos targetPos = topLeft.relative(colDir, x).relative(rowDir, y);
                 ItemFrame found = getItemFrameAt(world, targetPos, facing);
                 if (found == null) return null;
                 list.add(found);
@@ -366,25 +365,57 @@ public class FabricEventsRegistrar {
 
     private static boolean placeCombinedMap(ServerPlayer player, ItemFrame originFrame, FabricImageMap map) {
         Direction facing = originFrame.getDirection();
-        if (!facing.getAxis().isHorizontal()) {
-            player.sendSystemMessage(Component.literal("§c[ImageFrame] Combined maps can only be placed on vertical walls."));
-            return false;
-        }
 
-        Direction downDir = Direction.DOWN;
-        Direction rightDir = facing.getCounterClockWise();
-
-        List<ItemFrame> grid = findItemFrameGrid((ServerLevel) player.level(), originFrame, facing, downDir, rightDir, map.width, map.height);
-        if (grid == null) {
-            player.sendSystemMessage(Component.literal("§c[ImageFrame] There are not enough empty adjacent item frames. A grid of " + map.width + "x" + map.height + " is required."));
-            return false;
-        }
-
-        for (ItemFrame frame : grid) {
-            if (!frame.getItem().isEmpty()) {
-                player.sendSystemMessage(Component.literal("§c[ImageFrame] One or more item frames in the grid already contain items."));
-                return false;
+        // Spigot parity: support walls, floors (UP) and ceilings (DOWN)
+        Direction rowDir; // direction rows advance (top -> bottom of the image)
+        Direction colDir; // direction columns advance (left -> right of the image)
+        if (facing.getAxis().isHorizontal()) {
+            rowDir = Direction.DOWN;
+            colDir = facing.getCounterClockWise();
+        } else {
+            Direction viewDir = Direction.fromYRot(player.getYRot());
+            if (viewDir.getAxis().isVertical()) {
+                viewDir = Direction.NORTH;
             }
+            colDir = viewDir.getClockWise();
+            rowDir = facing == Direction.UP ? viewDir.getOpposite() : viewDir;
+        }
+
+        ServerLevel level = (ServerLevel) player.level();
+
+        // Spigot parity: the clicked frame can be any cell of the grid, try them all
+        List<ItemFrame> grid = null;
+        boolean foundCompleteGrid = false;
+        outer:
+        for (int cy = 0; cy < map.height; cy++) {
+            for (int cx = 0; cx < map.width; cx++) {
+                BlockPos topLeft = originFrame.getPos().relative(colDir, -cx).relative(rowDir, -cy);
+                List<ItemFrame> candidate = collectItemFrameGrid(level, topLeft, facing, rowDir, colDir, map.width, map.height);
+                if (candidate == null) {
+                    continue;
+                }
+                foundCompleteGrid = true;
+                boolean empty = true;
+                for (ItemFrame frame : candidate) {
+                    if (!frame.getItem().isEmpty()) {
+                        empty = false;
+                        break;
+                    }
+                }
+                if (empty) {
+                    grid = candidate;
+                    break outer;
+                }
+            }
+        }
+
+        if (grid == null) {
+            if (foundCompleteGrid) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] One or more item frames in the grid already contain items."));
+            } else {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] There are not enough empty adjacent item frames. A grid of " + map.width + "x" + map.height + " is required."));
+            }
+            return false;
         }
 
         UUID placementUuid = UUID.randomUUID();

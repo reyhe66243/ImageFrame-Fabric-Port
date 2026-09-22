@@ -54,6 +54,9 @@ public class FabricImageMapManager {
         public int currentFrameIndex = 0;
         public long lastFrameUpdate = 0;
         public boolean isPaused = false;
+
+        // Transient (not persisted): empty maps consumed on creation, refunded if the creation fails
+        public int consumedEmptyMaps = 0;
     }
 
     public static class PlayerSelection {
@@ -579,26 +582,26 @@ public class FabricImageMapManager {
 
         if (selection.corner1 == null) {
             selection.corner1 = itemFrame;
-            player.sendSystemMessage(Component.literal("§a[ImageFrame] First frame selected!"));
+            player.sendSystemMessage(Component.literal("§a[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.corner1")));
         } else if (selection.corner2 == null) {
             selection.corner2 = itemFrame;
-            player.sendSystemMessage(Component.literal("§a[ImageFrame] Second frame selected!"));
+            player.sendSystemMessage(Component.literal("§a[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.corner2")));
             selection.active = false;
 
             // Calculate selected frames
             List<ItemFrame> frames = getSelectedFrames(player, selection.corner1, selection.corner2);
             if (frames.isEmpty()) {
-                player.sendSystemMessage(Component.literal("§c[ImageFrame] Invalid or empty selection."));
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.invalid")));
                 selection.corner1 = null;
                 selection.corner2 = null;
             } else {
-                player.sendSystemMessage(Component.literal("§a[ImageFrame] Selection completed successfully. Width x Height: " + getSelectionWidth(frames) + "x" + getSelectionHeight(frames)));
+                player.sendSystemMessage(Component.literal("§a[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.success", getSelectionWidth(frames), getSelectionHeight(frames))));
             }
         } else {
             // The previous selection already had both corners: start a new one instead of ignoring the click
             selection.corner1 = itemFrame;
             selection.corner2 = null;
-            player.sendSystemMessage(Component.literal("§a[ImageFrame] First frame selected! (new selection)"));
+            player.sendSystemMessage(Component.literal("§a[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.corner1")));
         }
     }
 
@@ -656,7 +659,7 @@ public class FabricImageMapManager {
         return frames;
     }
 
-    private int getSelectionWidth(List<ItemFrame> frames) {
+    public int getSelectionWidth(List<ItemFrame> frames) {
         if (frames.isEmpty()) return 0;
         ItemFrame first = frames.get(0);
         boolean horizontal = first.getDirection().getAxis().isHorizontal();
@@ -674,26 +677,26 @@ public class FabricImageMapManager {
         return width;
     }
 
-    private int getSelectionHeight(List<ItemFrame> frames) {
+    public int getSelectionHeight(List<ItemFrame> frames) {
         if (frames.isEmpty()) return 0;
         int width = getSelectionWidth(frames);
         return frames.size() / width;
     }
 
-    public void createMap(String name, String url, int width, int height, UUID owner, String dithering, boolean combined, boolean useSelection, ServerPlayer player) {
+    public boolean createMap(String name, String url, int width, int height, UUID owner, String dithering, boolean combined, boolean useSelection, ServerPlayer player) {
         ServerLevel overworld = ((ServerLevel) player.level()).getServer().getLevel(Level.OVERWORLD);
 
         List<ItemFrame> selectedFrames = null;
         if (useSelection) {
             PlayerSelection sel = selections.get(player.getUUID());
             if (sel == null || sel.corner1 == null || sel.corner2 == null) {
-                player.sendSystemMessage(Component.literal("§c[ImageFrame] You must first make a selection with /imageframe select"));
-                return;
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.no_selection")));
+                return false;
             }
             selectedFrames = getSelectedFrames(player, sel.corner1, sel.corner2);
             if (selectedFrames.isEmpty()) {
-                player.sendSystemMessage(Component.literal("§c[ImageFrame] Your item frame selection is empty."));
-                return;
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.invalid")));
+                return false;
             }
             width = getSelectionWidth(selectedFrames);
             height = getSelectionHeight(selectedFrames);
@@ -701,14 +704,26 @@ public class FabricImageMapManager {
 
         if (maps.containsKey(name.toLowerCase())) {
             player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.duplicate_map_name")));
-            return;
+            return false;
         }
+
+        // Validate dimensions (protects against zero/negative values and int overflow)
+        if (width <= 0 || height <= 0) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.invalid_map_size")));
+            return false;
+        }
+        long totalMapsLong = (long) width * height;
+        if (totalMapsLong > Integer.MAX_VALUE) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.invalid_map_size")));
+            return false;
+        }
+        int requiredMaps = (int) totalMapsLong;
 
         // 1. Check MaxSize
         int maxSize = ImageFrameMod.instance.getMaxSize();
         if (maxSize > 0 && (width > maxSize || height > maxSize)) {
             player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.oversize", maxSize)));
-            return;
+            return false;
         }
 
         // 2. Check URL Whitelist
@@ -723,7 +738,7 @@ public class FabricImageMapManager {
             }
             if (!allowed) {
                 player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.url_restricted")));
-                return;
+                return false;
             }
         }
 
@@ -733,23 +748,24 @@ public class FabricImageMapManager {
             long existingCount = maps.values().stream().filter(m -> m.owner.equals(player.getUUID())).count();
             if (existingCount >= creationLimit) {
                 player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.player_creation_limit_reached", creationLimit)));
-                return;
+                return false;
             }
         }
 
         // 4. Check & consume empty maps if required
-        int requiredMaps = width * height;
+        int takenMaps = 0;
         if (!player.isCreative() && ImageFrameMod.instance.isRequireEmptyMaps()) {
             if (!FabricMapHelper.removeEmptyMaps(player, requiredMaps)) {
                 player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.not_enough_maps", requiredMaps)));
-                return;
+                return false;
             }
+            takenMaps = requiredMaps;
         }
 
         player.sendSystemMessage(Component.literal("§e[ImageFrame] Reserving Map IDs and downloading image..."));
 
         List<Integer> mapIds = new ArrayList<>();
-        for (int i = 0; i < width * height; i++) {
+        for (int i = 0; i < requiredMaps; i++) {
             MapId mapId = overworld.getFreeMapId();
             mapIds.add(mapId.id());
 
@@ -778,6 +794,7 @@ public class FabricImageMapManager {
         map.dithering = dithering;
         map.isCombined = combined;
         map.creationDate = System.currentTimeMillis();
+        map.consumedEmptyMaps = takenMaps;
 
         maps.put(name.toLowerCase(), map);
         saveMapData(map);
@@ -785,6 +802,7 @@ public class FabricImageMapManager {
         // Process image asynchronously
         final List<ItemFrame> finalFrames = selectedFrames;
         Scheduler.runTaskAsynchronously(null, () -> loadAndProcessImageAsync(map, true, player, finalFrames));
+        return true;
     }
 
     private void loadAndProcessImageAsync(FabricImageMap map, boolean isNewCreation, ServerPlayer notifyPlayer, List<ItemFrame> fillFrames) {
@@ -796,87 +814,7 @@ public class FabricImageMapManager {
                 return;
             }
 
-            if (map.url == null || map.url.trim().isEmpty()) {
-                throw new Exception("Map has no URL specified and no local image files were found.");
-            }
-
-            URLConnection conn = new URL(map.url).openConnection();
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-            int timeout = ImageFrameMod.instance.getMaxProcessingTime() * 1000;
-            conn.setConnectTimeout(timeout);
-            conn.setReadTimeout(timeout);
-
-            long maxFileSize = ImageFrameMod.instance.getMaxImageFileSize();
-            long len = conn.getContentLengthLong();
-            if (len > 0 && maxFileSize > 0 && len > maxFileSize) {
-                throw new Exception("Image file size (" + len + " bytes) exceeds configured limit (" + maxFileSize + " bytes).");
-            }
-
-            // Attempt to detect if it's a GIF
-            boolean isGif = map.url.toLowerCase().contains(".gif") || map.url.toLowerCase().contains("gif");
-            List<BufferedImage> images = new ArrayList<>();
-            List<Integer> delays = new ArrayList<>();
-
-            try (InputStream in = conn.getInputStream()) {
-                if (isGif) {
-                    List<GifReader.ImageFrame> frames = GifReader.readGif(in, (int) Math.min(Integer.MAX_VALUE, maxFileSize)).get();
-                    for (GifReader.ImageFrame f : frames) {
-                        images.add(f.getImage());
-                        delays.add(f.getDelay());
-                    }
-                } else {
-                    BufferedImage img = ImageIO.read(in);
-                    if (img != null) {
-                        images.add(img);
-                        delays.add(0);
-                    }
-                }
-            }
-
-            if (images.isEmpty()) {
-                throw new Exception("Could not load any frames from the image.");
-            }
-
-            map.isAnimated = isGif && images.size() > 1;
-            map.framesColors = new CopyOnWriteArrayList<>();
-            map.framesDelays = delays;
-
-            // Process each frame and crop into tiles
-            int targetWidth = map.width * 128;
-            int targetHeight = map.height * 128;
-
-            for (BufferedImage rawImg : images) {
-                // Scale image to final size
-                BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = scaled.createGraphics();
-                g.drawImage(rawImg.getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH), 0, 0, null);
-                g.dispose();
-
-                byte[][] frameTilesColors = new byte[map.mapIds.size()][16384];
-
-                for (int y = 0; y < map.height; y++) {
-                    for (int x = 0; x < map.width; x++) {
-                        int tileIndex = y * map.width + x;
-                        byte[] tileColors = frameTilesColors[tileIndex];
-
-                        for (int px = 0; px < 128; px++) {
-                            for (int py = 0; py < 128; py++) {
-                                int rx = x * 128 + px;
-                                int ry = y * 128 + py;
-                                int argb = scaled.getRGB(rx, ry);
-                                int a = (argb >> 24) & 0xFF;
-                                int r = (argb >> 16) & 0xFF;
-                                int gVal = (argb >> 8) & 0xFF;
-                                int b = argb & 0xFF;
-
-                                tileColors[py * 128 + px] = FabricMapColorPalette.getClosestColorIndex(r, gVal, b, a);
-                            }
-                        }
-                    }
-                }
-
-                map.framesColors.add(frameTilesColors);
-            }
+            List<BufferedImage> images = downloadAndProcessFrames(map);
 
             if (isNewCreation) {
                 // Save local PNG images for absolute offline parity with Spigot
@@ -914,6 +852,7 @@ public class FabricImageMapManager {
                 // Remove map created in error
                 maps.remove(map.name.toLowerCase());
                 deleteMapFolder(map);
+                refundConsumedEmptyMaps(map, notifyPlayer);
                 if (notifyPlayer != null) {
                     String error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                     runSync(() -> {
@@ -923,6 +862,442 @@ public class FabricImageMapManager {
                     });
                 }
             }
+        }
+    }
+
+    /**
+     * Downloads the map URL and converts every frame into Minecraft map color bytes,
+     * updating {@code map.isAnimated}, {@code map.framesColors} and {@code map.framesDelays}.
+     * This method only touches the map object and the network, never the world/player,
+     * so it can safely run on an async thread.
+     */
+    private List<BufferedImage> downloadAndProcessFrames(FabricImageMap map) throws Exception {
+        DownloadedImage downloaded = downloadImage(map.url);
+        map.isAnimated = downloaded.animated;
+        map.framesColors = new CopyOnWriteArrayList<>();
+        map.framesDelays = downloaded.delays;
+
+        // Process each frame and crop into tiles
+        int targetWidth = map.width * 128;
+        int targetHeight = map.height * 128;
+
+        for (BufferedImage rawImg : downloaded.images) {
+            BufferedImage scaled = scaleTo(rawImg, targetWidth, targetHeight);
+            byte[][] frameTilesColors = new byte[map.mapIds.size()][16384];
+
+            for (int y = 0; y < map.height; y++) {
+                for (int x = 0; x < map.width; x++) {
+                    int tileIndex = y * map.width + x;
+                    byte[] tileColors = frameTilesColors[tileIndex];
+
+                    for (int px = 0; px < 128; px++) {
+                        for (int py = 0; py < 128; py++) {
+                            int argb = scaled.getRGB(x * 128 + px, y * 128 + py);
+                            int a = (argb >> 24) & 0xFF;
+                            int r = (argb >> 16) & 0xFF;
+                            int gVal = (argb >> 8) & 0xFF;
+                            int b = argb & 0xFF;
+
+                            tileColors[py * 128 + px] = FabricMapColorPalette.getClosestColorIndex(r, gVal, b, a);
+                        }
+                    }
+                }
+            }
+
+            map.framesColors.add(frameTilesColors);
+        }
+
+        return downloaded.images;
+    }
+
+    private static class DownloadedImage {
+        final List<BufferedImage> images;
+        final List<Integer> delays;
+        final boolean animated;
+
+        DownloadedImage(List<BufferedImage> images, List<Integer> delays, boolean animated) {
+            this.images = images;
+            this.delays = delays;
+            this.animated = animated;
+        }
+    }
+
+    private DownloadedImage downloadImage(String url) throws Exception {
+        if (url == null || url.trim().isEmpty()) {
+            throw new Exception("Map has no URL specified and no local image files were found.");
+        }
+
+        URLConnection conn = new URL(url).openConnection();
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+        int timeout = ImageFrameMod.instance.getMaxProcessingTime() * 1000;
+        conn.setConnectTimeout(timeout);
+        conn.setReadTimeout(timeout);
+
+        long maxFileSize = ImageFrameMod.instance.getMaxImageFileSize();
+        long len = conn.getContentLengthLong();
+        if (len > 0 && maxFileSize > 0 && len > maxFileSize) {
+            throw new Exception("Image file size (" + len + " bytes) exceeds configured limit (" + maxFileSize + " bytes).");
+        }
+
+        // Attempt to detect if it's a GIF
+        boolean isGif = url.toLowerCase().contains(".gif") || url.toLowerCase().contains("gif");
+        List<BufferedImage> images = new ArrayList<>();
+        List<Integer> delays = new ArrayList<>();
+
+        try (InputStream in = conn.getInputStream()) {
+            if (isGif) {
+                List<GifReader.ImageFrame> frames = GifReader.readGif(in, (int) Math.min(Integer.MAX_VALUE, maxFileSize)).get();
+                for (GifReader.ImageFrame f : frames) {
+                    images.add(f.getImage());
+                    delays.add(f.getDelay());
+                }
+            } else {
+                BufferedImage img = ImageIO.read(in);
+                if (img != null) {
+                    images.add(img);
+                    delays.add(0);
+                }
+            }
+        }
+
+        if (images.isEmpty()) {
+            throw new Exception("Could not load any frames from the image.");
+        }
+
+        return new DownloadedImage(images, delays, isGif && images.size() > 1);
+    }
+
+    private BufferedImage scaleTo(BufferedImage source, int width, int height) {
+        if (source.getWidth() == width && source.getHeight() == height) {
+            return source;
+        }
+        BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = scaled.createGraphics();
+        g.drawImage(source.getScaledInstance(width, height, Image.SCALE_SMOOTH), 0, 0, null);
+        g.dispose();
+        return scaled;
+    }
+
+    /**
+     * Refunds the empty maps consumed by a failed creation (Spigot parity).
+     */
+    private void refundConsumedEmptyMaps(FabricImageMap map, ServerPlayer player) {
+        int count = map.consumedEmptyMaps;
+        map.consumedEmptyMaps = 0;
+        if (count <= 0) {
+            return;
+        }
+        runSync(() -> {
+            if (player == null || playerListSource() == null || playerListSource().getPlayer(player.getUUID()) == null) {
+                ImageFrameMod.LOGGER.warn("[ImageFrame] Could not refund " + count + " empty map(s) for failed map \"" + map.name + "\" (player offline or unavailable).");
+                return;
+            }
+            FabricMapHelper.giveItemOrDrop(player, new ItemStack(Items.MAP, count));
+            player.sendSystemMessage(Component.literal("§7[ImageFrame] Returned " + count + " empty map(s)."));
+        });
+    }
+
+    /**
+     * Fills empty item frames with the map tiles (Spigot parity: occupied frames are skipped
+     * and their map item is given to the player instead).
+     */
+    public void fillItemFrames(ServerPlayer player, List<ItemFrame> frames, FabricImageMap map) {
+        if (FabricMapHelper.fillItemFrames(player, frames, map.mapIds)) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.item_frame_occupied")));
+        }
+    }
+
+    /**
+     * Re-downloads and re-renders an existing image map in place (same name, size and map IDs).
+     * Optionally points the map at a new URL. Failed refreshes restore the previous URL.
+     */
+    public boolean refreshMap(FabricImageMap map, ServerPlayer player, String newUrl) {
+        if (map == null) {
+            return false;
+        }
+
+        String previousUrl = map.url;
+        if (newUrl != null && !newUrl.trim().isEmpty()) {
+            String candidate = newUrl.trim();
+            if (ImageFrameMod.instance.isRestrictImageUrl()) {
+                List<String> whitelist = ImageFrameMod.instance.getImageUrlWhitelist();
+                boolean allowed = false;
+                for (String allowedPrefix : whitelist) {
+                    if (candidate.toLowerCase().startsWith(allowedPrefix.toLowerCase())) {
+                        allowed = true;
+                        break;
+                    }
+                }
+                if (!allowed) {
+                    player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.url_restricted")));
+                    return false;
+                }
+            }
+            map.url = candidate;
+        }
+
+        if (map.url == null || map.url.trim().isEmpty()) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.not_an_image_map")));
+            return false;
+        }
+
+        player.sendSystemMessage(Component.literal("§e[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.image_map_processing")));
+        Scheduler.runTaskAsynchronously(null, () -> refreshMapAsync(map, player, previousUrl));
+        return true;
+    }
+
+    private void refreshMapAsync(FabricImageMap map, ServerPlayer player, String previousUrl) {
+        try {
+            List<BufferedImage> images = downloadAndProcessFrames(map);
+            saveLocalPNGFiles(map, images);
+            saveMapData(map);
+
+            runSync(() -> {
+                applyInitialFrameToMaps(map, player);
+                notifyPlayerIfOnline(player, "§a[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.image_map_refreshed"));
+                try {
+                    com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastImageUpdate(map);
+                } catch (Exception ex) {
+                    ImageFrameMod.LOGGER.debug("[ImageFrame] Could not broadcast HD update after refresh: " + ex.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            ImageFrameMod.LOGGER.error("[ImageFrame] Error refreshing image for " + map.name + ": ", e);
+            if (previousUrl != null && !previousUrl.equals(map.url)) {
+                map.url = previousUrl;
+                saveMapData(map);
+            }
+            String error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            runSync(() -> notifyPlayerIfOnline(player, "§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.unable_to_load_map") + " (" + error + ")"));
+        }
+    }
+
+    private void notifyPlayerIfOnline(ServerPlayer player, String message) {
+        if (player == null || playerListSource() == null || playerListSource().getPlayer(player.getUUID()) == null) {
+            return;
+        }
+        player.sendSystemMessage(Component.literal(message));
+    }
+
+    /**
+     * Creates an overlay image map on top of existing vanilla maps (the map in the
+     * player's hand, or the maps inside the selected item frames). The existing map
+     * IDs are reused instead of reserving new ones, and no empty maps are consumed.
+     */
+    public boolean createOverlayMap(String name, String url, ServerPlayer player, boolean useSelection) {
+        ServerLevel overworld = ((ServerLevel) player.level()).getServer().getLevel(Level.OVERWORLD);
+        if (overworld == null) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.unknown_error")));
+            return false;
+        }
+
+        List<Integer> targetMapIds = new ArrayList<>();
+        int width;
+        int height;
+
+        if (useSelection) {
+            PlayerSelection sel = selections.get(player.getUUID());
+            if (sel == null || sel.corner1 == null || sel.corner2 == null) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.no_selection")));
+                return false;
+            }
+            List<ItemFrame> frames = getSelectedFrames(player, sel.corner1, sel.corner2);
+            if (frames.isEmpty()) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.selection.invalid")));
+                return false;
+            }
+            width = getSelectionWidth(frames);
+            height = getSelectionHeight(frames);
+            for (ItemFrame frame : frames) {
+                ItemStack item = frame.getItem();
+                MapId id = item.isEmpty() ? null : item.get(net.minecraft.core.component.DataComponents.MAP_ID);
+                if (id == null) {
+                    player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.invalid_overlay_map")));
+                    return false;
+                }
+                targetMapIds.add(id.id());
+            }
+        } else {
+            ItemStack hand = player.getMainHandItem();
+            if (hand.isEmpty() || !hand.is(Items.FILLED_MAP)) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.not_an_image_map")));
+                return false;
+            }
+            MapId id = hand.get(net.minecraft.core.component.DataComponents.MAP_ID);
+            if (id == null) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.invalid_overlay_map")));
+                return false;
+            }
+            width = 1;
+            height = 1;
+            targetMapIds.add(id.id());
+        }
+
+        if (targetMapIds.size() != width * height || new HashSet<>(targetMapIds).size() != targetMapIds.size()) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.invalid_overlay_map")));
+            return false;
+        }
+        for (int id : targetMapIds) {
+            if (getMapByMapId(id) != null) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.invalid_overlay_map")));
+                return false;
+            }
+        }
+
+        if (maps.containsKey(name.toLowerCase())) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.duplicate_map_name")));
+            return false;
+        }
+
+        int maxSize = ImageFrameMod.instance.getMaxSize();
+        if (maxSize > 0 && (width > maxSize || height > maxSize)) {
+            player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.oversize", maxSize)));
+            return false;
+        }
+
+        if (ImageFrameMod.instance.isRestrictImageUrl()) {
+            List<String> whitelist = ImageFrameMod.instance.getImageUrlWhitelist();
+            boolean allowed = false;
+            for (String allowedPrefix : whitelist) {
+                if (url.toLowerCase().startsWith(allowedPrefix.toLowerCase())) {
+                    allowed = true;
+                    break;
+                }
+            }
+            if (!allowed) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.url_restricted")));
+                return false;
+            }
+        }
+
+        int creationLimit = ImageFrameMod.instance.getPlayerCreationLimit(player);
+        if (creationLimit >= 0) {
+            long existingCount = maps.values().stream().filter(m -> m.owner.equals(player.getUUID())).count();
+            if (existingCount >= creationLimit) {
+                player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.player_creation_limit_reached", creationLimit)));
+                return false;
+            }
+        }
+
+        // Snapshot the base vanilla map colors on the main thread
+        byte[][] baseColors = new byte[targetMapIds.size()][];
+        for (int i = 0; i < targetMapIds.size(); i++) {
+            MapItemSavedData data = overworld.getMapData(new MapId(targetMapIds.get(i)));
+            baseColors[i] = data != null && data.colors != null ? data.colors.clone() : null;
+        }
+
+        player.sendSystemMessage(Component.literal("§e[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.image_map_processing")));
+
+        final int overlayWidth = width;
+        final int overlayHeight = height;
+        final UUID owner = player.getUUID();
+        Scheduler.runTaskAsynchronously(null, () -> createOverlayMapAsync(name, url, owner, player, targetMapIds, baseColors, overlayWidth, overlayHeight));
+        return true;
+    }
+
+    private void createOverlayMapAsync(String name, String url, UUID owner, ServerPlayer player, List<Integer> targetMapIds, byte[][] baseColors, int width, int height) {
+        try {
+            DownloadedImage downloaded = downloadImage(url);
+            BufferedImage overlay = scaleTo(downloaded.images.get(0), width * 128, height * 128);
+
+            byte[][] tileColors = new byte[targetMapIds.size()][16384];
+            BufferedImage composite = new BufferedImage(width * 128, height * 128, BufferedImage.TYPE_INT_ARGB);
+
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int tileIndex = y * width + x;
+                    byte[] out = tileColors[tileIndex];
+                    byte[] base = baseColors[tileIndex];
+
+                    for (int px = 0; px < 128; px++) {
+                        for (int py = 0; py < 128; py++) {
+                            int rx = x * 128 + px;
+                            int ry = y * 128 + py;
+
+                            int overlayArgb = overlay.getRGB(rx, ry);
+                            int oa = (overlayArgb >>> 24) & 0xFF;
+
+                            int baseArgb = 0;
+                            boolean hasBase = false;
+                            if (base != null) {
+                                int packed = base[py * 128 + px] & 0xFF;
+                                if (packed != 0) {
+                                    baseArgb = net.minecraft.world.level.material.MapColor.getColorFromPackedId(packed);
+                                    hasBase = (baseArgb >>> 24) != 0;
+                                }
+                            }
+
+                            int outRgb;
+                            if (oa == 0) {
+                                outRgb = hasBase ? (0xFF000000 | (baseArgb & 0xFFFFFF)) : 0;
+                            } else if (!hasBase || oa >= 255) {
+                                outRgb = 0xFF000000 | (overlayArgb & 0xFFFFFF);
+                            } else {
+                                int br = (baseArgb >> 16) & 0xFF;
+                                int bg = (baseArgb >> 8) & 0xFF;
+                                int bb = baseArgb & 0xFF;
+                                int r = ((overlayArgb >> 16) & 0xFF) * oa / 255 + br * (255 - oa) / 255;
+                                int g = ((overlayArgb >> 8) & 0xFF) * oa / 255 + bg * (255 - oa) / 255;
+                                int b = (overlayArgb & 0xFF) * oa / 255 + bb * (255 - oa) / 255;
+                                outRgb = 0xFF000000 | (r << 16) | (g << 8) | b;
+                            }
+
+                            byte index;
+                            int packedRgb;
+                            if (outRgb == 0) {
+                                index = 0;
+                                packedRgb = 0;
+                            } else {
+                                index = FabricMapColorPalette.getClosestColorIndex((outRgb >> 16) & 0xFF, (outRgb >> 8) & 0xFF, outRgb & 0xFF, 255);
+                                packedRgb = 0xFF000000 | (net.minecraft.world.level.material.MapColor.getColorFromPackedId(index & 0xFF) & 0xFFFFFF);
+                            }
+                            out[py * 128 + px] = index;
+                            composite.setRGB(rx, ry, packedRgb);
+                        }
+                    }
+                }
+            }
+
+            int nextIndex = 0;
+            File dataFolder = new File(ImageFrameMod.instance.getConfigFolder(), "data");
+            while (new File(dataFolder, String.valueOf(nextIndex)).exists()) {
+                nextIndex++;
+            }
+
+            FabricImageMap map = new FabricImageMap();
+            map.index = nextIndex;
+            map.name = name;
+            map.url = url;
+            map.width = width;
+            map.height = height;
+            map.mapIds = new ArrayList<>(targetMapIds);
+            map.owner = owner;
+            map.dithering = "floyd-steinberg";
+            map.isCombined = false;
+            map.creationDate = System.currentTimeMillis();
+            map.isAnimated = false;
+            map.framesDelays = new ArrayList<>();
+            map.framesDelays.add(0);
+            map.framesColors = new CopyOnWriteArrayList<>();
+            map.framesColors.add(tileColors);
+
+            maps.put(name.toLowerCase(), map);
+            saveLocalPNGFiles(map, new ArrayList<>(java.util.Collections.singletonList(composite)));
+            saveMapData(map);
+
+            runSync(() -> {
+                applyInitialFrameToMaps(map, player);
+                notifyPlayerIfOnline(player, "§a[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.image_map_created"));
+                try {
+                    com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastImageUpdate(map);
+                } catch (Exception ex) {
+                    ImageFrameMod.LOGGER.debug("[ImageFrame] Could not broadcast HD update after overlay: " + ex.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            ImageFrameMod.LOGGER.error("[ImageFrame] Error creating overlay map \"" + name + "\": ", e);
+            String error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            runSync(() -> notifyPlayerIfOnline(player, "§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.unable_to_load_map") + " (" + error + ")"));
         }
     }
 
@@ -965,22 +1340,7 @@ public class FabricImageMapManager {
     }
 
     private void giveMapsToPlayer(ServerPlayer player, FabricImageMap map, List<ItemFrame> fillFrames) {
-        // Link item frames if selection was used
-        if (fillFrames != null && !fillFrames.isEmpty()) {
-            for (int i = 0; i < Math.min(fillFrames.size(), map.mapIds.size()); i++) {
-                ItemFrame frame = fillFrames.get(i);
-                int mapId = map.mapIds.get(i);
-
-                ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                mapItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(mapId));
-
-                frame.setItem(mapItem);
-            }
-            player.sendSystemMessage(Component.literal("§a[ImageFrame] Item frames auto-filled!"));
-            return;
-        }
-
-        // If combined
+        // Spigot parity: combined mode takes precedence over selection filling
         if (map.isCombined) {
             ItemStack combinedItem = new ItemStack(Items.FILLED_MAP);
             combinedItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(map.mapIds.get(0)));
@@ -988,7 +1348,7 @@ public class FabricImageMapManager {
 
             // Add lore indicating the size
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.literal("§7" + com.loohp.imageframe.fabric.language.FabricLanguageManager.getInstance().get("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
+            lore.add(Component.literal("§7" + FabricLanguageManager.getInstance().get("imageframe.settings.combined_map_item.lore.1", map.width, map.height)));
             lore.add(Component.literal("§8ImageID: " + map.index));
             lore.add(Component.literal("§8Size: " + map.width + "x" + map.height));
             combinedItem.set(net.minecraft.core.component.DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(lore));
@@ -997,14 +1357,22 @@ public class FabricImageMapManager {
             com.loohp.imageframe.objectholders.CombinedMapItemInfo info = new com.loohp.imageframe.objectholders.CombinedMapItemInfo(map.index);
             FabricMapHelper.withCombinedMapItemInfo(combinedItem, info);
 
-            player.getInventory().add(combinedItem);
-        } else {
-            // Give all separate maps
-            for (int id : map.mapIds) {
-                ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                mapItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(id));
-                player.getInventory().add(mapItem);
-            }
+            FabricMapHelper.giveItemOrDrop(player, combinedItem);
+            player.sendSystemMessage(Component.literal("§a[ImageFrame] Image maps have been added to your inventory."));
+            return;
+        }
+
+        // Link item frames if selection was used
+        if (fillFrames != null && !fillFrames.isEmpty()) {
+            fillItemFrames(player, fillFrames, map);
+            return;
+        }
+
+        // Give all separate maps
+        for (int id : map.mapIds) {
+            ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
+            mapItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(id));
+            FabricMapHelper.giveItemOrDrop(player, mapItem);
         }
         player.sendSystemMessage(Component.literal("§a[ImageFrame] Image maps have been added to your inventory."));
     }
