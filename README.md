@@ -16,28 +16,6 @@ This project is a hybrid (Universal) mod: it functions completely server-side fo
 
 ---
 
-
-
-### Features & Optimizations
-
-1.  **Native High-Definition (HD) Map Renderer:**
-    *   Renders static images and multi-frame GIFs in high definition when installed on the client.
-    *   Uses thread-safe OpenGL VRAM texture allocation on the client render thread for maximum performance.
-2.  **Instant HD GIF Animation Synchronization:**
-    *   Multi-frame HD textures are cached in client memory and synchronized using lightweight server timestamp/frame signals.
-    *   Eliminates network packet overhead, screen flickering, and re-fetching during GIF playback.
-3.  **Dynamic Map Color Engine (Vanilla Fallback):**
-    *   Uses a pixel-perfect Mojang color matching system to map image RGB colors to Minecraft's built-in map colors dynamically for vanilla players.
-    *   No hardcoded palette files or inaccurate colors. Parity is absolute.
-4.  **Network Visibility Cache:**
-    *   Optimized for large multiplayer servers! Maps and animation frames are only sent to players holding a map or standing within 32 blocks of an active map frame.
-    *   This eliminates network packet overhead, dramatically reduces bandwidth usage, and prevents clients from lagging due to off-screen animation updates.
-5.  **Invisible Item Frames:**
-    *   Supports placing maps on invisible frames.
-    *   Integrates seamlessly with splash potions of invisibility or area effect clouds containing invisibility. Throwing them on item frames turns them invisible, while breaking or modifying them updates the state correctly.
-6.  **Inventory Preview Tooltips:**
-    *   Includes item hover previews for single maps, image map grids, and paintings directly in player inventory tooltips.
-
 ### Universal Architecture & Client Compatibility
 
 Use **this exact same mod JAR** on both the server and client. Do **not** use the original official client mod, as this port uses an updated, zero-lag networking protocol designed for Minecraft 1.21+.
