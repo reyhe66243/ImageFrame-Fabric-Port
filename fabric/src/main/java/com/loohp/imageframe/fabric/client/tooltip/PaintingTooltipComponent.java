@@ -2,7 +2,6 @@ package com.loohp.imageframe.fabric.client.tooltip;
 
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.decoration.painting.PaintingVariant;
 
@@ -35,6 +34,8 @@ public record PaintingTooltipComponent(PaintingVariant paintingVariant) implemen
         Identifier painting = paintingVariant.assetId().withPrefix("textures/painting/").withSuffix(".png");
         int w = shouldFillWidth() ? 64 : Math.round(getWidthToHeightRatio() * 64F);
         int h = shouldFillWidth() ? Math.round(getHeightToWidthRatio() * 64F) : 64;
-        guiGraphics.blit(RenderPipelines.GUI_TEXTURED, painting, x, y, 0.0F, 0.0F, w, h, w, h);
+        // Version-agnostic overload: exists with the same descriptor in 26.1.2, 26.2 and 26.3.
+        // Signature: (texture, x0, y0, x1, y1, u0, u1, v0, v1) -> full texture into a w x h box.
+        guiGraphics.blit(painting, x, y, x + w, y + h, 0.0F, 1.0F, 0.0F, 1.0F);
     }
 }

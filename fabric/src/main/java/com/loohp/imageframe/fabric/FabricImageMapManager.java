@@ -167,6 +167,11 @@ public class FabricImageMapManager {
         PlayerSelection selection = selections.computeIfAbsent(uuid, k -> new PlayerSelection());
         selection.active = active;
         if (!active) {
+            // Turning the mode off cancels the pending selection
+            selection.corner1 = null;
+            selection.corner2 = null;
+        } else if (selection.corner1 != null && selection.corner2 != null) {
+            // A previous selection was already completed: start a fresh one on the next click
             selection.corner1 = null;
             selection.corner2 = null;
         }
@@ -589,6 +594,11 @@ public class FabricImageMapManager {
             } else {
                 player.sendSystemMessage(Component.literal("§a[ImageFrame] Selection completed successfully. Width x Height: " + getSelectionWidth(frames) + "x" + getSelectionHeight(frames)));
             }
+        } else {
+            // The previous selection already had both corners: start a new one instead of ignoring the click
+            selection.corner1 = itemFrame;
+            selection.corner2 = null;
+            player.sendSystemMessage(Component.literal("§a[ImageFrame] First frame selected! (new selection)"));
         }
     }
 
@@ -606,39 +616,56 @@ public class FabricImageMapManager {
         frames.removeIf(f -> !f.getDirection().equals(dir));
 
         // Sort frames from top to bottom, left to right (perspective-based)
-        frames.sort((f1, f2) -> {
-            BlockPos p1 = f1.getPos();
-            BlockPos p2 = f2.getPos();
+        if (dir.getAxis().isHorizontal()) {
+            frames.sort((f1, f2) -> {
+                BlockPos p1 = f1.getPos();
+                BlockPos p2 = f2.getPos();
 
-            // Highest Y first (top to bottom)
-            if (p1.getY() != p2.getY()) {
-                return Integer.compare(p2.getY(), p1.getY());
-            }
+                // Highest Y first (top to bottom)
+                if (p1.getY() != p2.getY()) {
+                    return Integer.compare(p2.getY(), p1.getY());
+                }
 
-            // Based on horizontal orientation
-            switch (dir) {
-                case NORTH:
-                    return Integer.compare(p2.getX(), p1.getX());
-                case SOUTH:
-                    return Integer.compare(p1.getX(), p2.getX());
-                case WEST:
+                // Based on horizontal orientation
+                switch (dir) {
+                    case NORTH:
+                        return Integer.compare(p2.getX(), p1.getX());
+                    case SOUTH:
+                        return Integer.compare(p1.getX(), p2.getX());
+                    case WEST:
+                        return Integer.compare(p1.getZ(), p2.getZ());
+                    case EAST:
+                        return Integer.compare(p2.getZ(), p1.getZ());
+                    default:
+                        return 0;
+                }
+            });
+        } else {
+            // Frames lying on the floor/ceiling (UP/DOWN): rows along Z (north -> south),
+            // columns along X (west -> east), matching a north-up top view.
+            frames.sort((f1, f2) -> {
+                BlockPos p1 = f1.getPos();
+                BlockPos p2 = f2.getPos();
+                if (p1.getZ() != p2.getZ()) {
                     return Integer.compare(p1.getZ(), p2.getZ());
-                case EAST:
-                    return Integer.compare(p2.getZ(), p1.getZ());
-                default:
-                    return 0;
-            }
-        });
+                }
+                return Integer.compare(p1.getX(), p2.getX());
+            });
+        }
 
         return frames;
     }
 
     private int getSelectionWidth(List<ItemFrame> frames) {
         if (frames.isEmpty()) return 0;
-        int highestY = frames.get(0).getPos().getY();
+        ItemFrame first = frames.get(0);
+        boolean horizontal = first.getDirection().getAxis().isHorizontal();
         int width = 0;
         for (ItemFrame f : frames) {
-            if (f.getPos().getY() == highestY) {
+            boolean sameRow = horizontal
+                    ? f.getPos().getY() == first.getPos().getY()
+                    : f.getPos().getZ() == first.getPos().getZ();
+            if (sameRow) {
                 width++;
             } else {
                 break;
@@ -765,20 +792,7 @@ public class FabricImageMapManager {
             // Try loading from local pre-existing files first to avoid re-downloading
             if (!isNewCreation && tryLoadFromLocalFiles(map)) {
                 ImageFrameMod.LOGGER.info("[ImageFrame] Map \"" + map.name + "\" loaded locally (no network download needed).");
-
-                // Apply first frame to Minecraft maps
-                ServerLevel overworld = null;
-                if (playerListSource() != null) {
-                    overworld = playerListSource().getServer().getLevel(Level.OVERWORLD);
-                }
-                if (overworld != null && map.framesColors != null && !map.framesColors.isEmpty()) {
-                    byte[][] initialColors = map.framesColors.get(0);
-                    for (int i = 0; i < map.mapIds.size(); i++) {
-                        int id = map.mapIds.get(i);
-                        MapItemSavedData savedData = getOrCreateMapData(overworld, id);
-                        FabricMapHelper.setColors(savedData, initialColors[i]);
-                    }
-                }
+                runSync(() -> applyInitialFrameToMaps(map, null));
                 return;
             }
 
@@ -864,55 +878,89 @@ public class FabricImageMapManager {
                 map.framesColors.add(frameTilesColors);
             }
 
-            // Apply first frame to Minecraft maps
-            ServerLevel overworld = notifyPlayer != null ? (ServerLevel) notifyPlayer.level() : null;
-            if (overworld == null && !map.mapIds.isEmpty()) {
-                // Find default overworld level
-                if (playerListSource() != null) {
-                    overworld = playerListSource().getServer().getLevel(Level.OVERWORLD);
-                }
-            }
-
-            if (overworld != null) {
-                byte[][] initialColors = map.framesColors.get(0);
-                for (int i = 0; i < map.mapIds.size(); i++) {
-                    int id = map.mapIds.get(i);
-                    MapItemSavedData savedData = getOrCreateMapData(overworld, id);
-                    FabricMapHelper.setColors(savedData, initialColors[i]);
-                }
-            }
-
             if (isNewCreation) {
                 // Save local PNG images for absolute offline parity with Spigot
                 saveLocalPNGFiles(map, images);
-                
+
                 // Save the final updated data.json with isAnimated and markers properties
                 saveMapData(map);
+            }
 
-                if (notifyPlayer != null) {
+            // World/player mutations must happen on the server thread.
+            runSync(() -> {
+                applyInitialFrameToMaps(map, notifyPlayer);
+
+                if (isNewCreation && notifyPlayer != null) {
                     notifyPlayer.sendSystemMessage(Component.literal("§a[ImageFrame] Image map \"" + map.name + "\" created and rendered successfully!"));
                     // Give maps
-                    giveMapsToPlayer(notifyPlayer, map, fillFrames);
+                    try {
+                        giveMapsToPlayer(notifyPlayer, map, fillFrames);
+                    } catch (Throwable t) {
+                        ImageFrameMod.LOGGER.error("[ImageFrame] Map \"" + map.name + "\" was created, but delivering items/filling frames failed: ", t);
+                    }
                 }
-            }
 
-            // Broadcast update to HD clients so they re-fetch textures
-            try {
-                com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastImageUpdate(map);
-            } catch (Exception ex) {
-                ImageFrameMod.LOGGER.debug("[ImageFrame] Could not broadcast HD update (server may not be fully started): " + ex.getMessage());
-            }
+                // Broadcast update to HD clients so they re-fetch textures
+                try {
+                    com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastImageUpdate(map);
+                } catch (Exception ex) {
+                    ImageFrameMod.LOGGER.debug("[ImageFrame] Could not broadcast HD update (server may not be fully started): " + ex.getMessage());
+                }
+            });
 
         } catch (Exception e) {
             ImageFrameMod.LOGGER.error("[ImageFrame] Error processing image for " + map.name + ": ", e);
             if (isNewCreation) {
-                if (notifyPlayer != null) {
-                    notifyPlayer.sendSystemMessage(Component.literal("§c[ImageFrame] Error downloading/processing image: " + e.getMessage()));
-                }
                 // Remove map created in error
                 maps.remove(map.name.toLowerCase());
                 deleteMapFolder(map);
+                if (notifyPlayer != null) {
+                    String error = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    runSync(() -> {
+                        if (playerListSource() != null && playerListSource().getPlayer(notifyPlayer.getUUID()) != null) {
+                            notifyPlayer.sendSystemMessage(Component.literal("§c[ImageFrame] Error downloading/processing image: " + error));
+                        }
+                    });
+                }
             }
+        }
+    }
+
+    /**
+     * Writes the first processed frame into the Minecraft map data.
+     * Must run on the server thread (called through {@link #runSync(Runnable)}).
+     */
+    private void applyInitialFrameToMaps(FabricImageMap map, ServerPlayer playerHint) {
+        if (map.framesColors == null || map.framesColors.isEmpty()) {
+            return;
+        }
+
+        ServerLevel level = playerHint != null ? (ServerLevel) playerHint.level() : null;
+        if (level == null && playerListSource() != null) {
+            level = playerListSource().getServer().getLevel(Level.OVERWORLD);
+        }
+        if (level == null) {
+            return;
+        }
+
+        byte[][] initialColors = map.framesColors.get(0);
+        int tiles = Math.min(map.mapIds.size(), initialColors.length);
+        for (int i = 0; i < tiles; i++) {
+            MapItemSavedData savedData = getOrCreateMapData(level, map.mapIds.get(i));
+            FabricMapHelper.setColors(savedData, initialColors[i]);
+        }
+    }
+
+    /**
+     * Runs a task on the server main thread. Falls back to inline execution if
+     * the server is not available (e.g. very early startup).
+     */
+    private void runSync(Runnable task) {
+        net.minecraft.server.MinecraftServer server = playerListSource() != null ? playerListSource().getServer() : null;
+        if (server != null) {
+            server.execute(task);
+        } else {
+            task.run();
         }
     }
 

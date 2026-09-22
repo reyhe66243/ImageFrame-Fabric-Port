@@ -5,7 +5,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MapRenderer;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.state.MapRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.saveddata.maps.MapId;
@@ -35,7 +34,10 @@ public class FilledMapTooltipComponent implements MapTooltipComponent {
 
     @Override
     public void extractImage(Font font, int x, int y, int width, int height, GuiGraphicsExtractor graphics) {
-        graphics.blit(RenderPipelines.GUI_TEXTURED, background, x, y, 0.0F, 0.0F, 64, 64, 64, 64);
+        // Version-agnostic overload: exists with the same descriptor in 26.1.2, 26.2 and 26.3.
+        // Avoids RenderPipelines.GUI_TEXTURED, whose RenderPipeline type moved package in 26.3.
+        // Signature: (texture, x0, y0, x1, y1, u0, u1, v0, v1) -> full texture into a 64x64 box.
+        graphics.blit(background, x, y, x + 64, y + 64, 0.0F, 1.0F, 0.0F, 1.0F);
         Minecraft client = Minecraft.getInstance();
         ClientLevel level = client.level;
         if (level == null) {

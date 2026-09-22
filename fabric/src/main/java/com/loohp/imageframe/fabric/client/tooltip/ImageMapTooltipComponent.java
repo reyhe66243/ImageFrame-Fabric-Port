@@ -7,7 +7,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.MapRenderer;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.state.MapRenderState;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.saveddata.maps.MapId;
@@ -70,7 +69,10 @@ public class ImageMapTooltipComponent implements MapTooltipComponent {
         float usableH = Math.max(0f, availableH - PAD_PX * 2f);
         int tileSizePxInt = Math.max(1, (int) Math.floor(usableH / gridRows));
         int mapWidth = getWidth(imageMapData);
-        graphics.blit(RenderPipelines.GUI_TEXTURED, background, x, y, 0, 0, mapWidth, 64, mapWidth, 64);
+        // Version-agnostic overload: exists with the same descriptor in 26.1.2, 26.2 and 26.3.
+        // Signature: (texture, x0, y0, x1, y1, u0, u1, v0, v1).
+        // Stretches the full 64x64 map_background texture onto the needed width.
+        graphics.blit(background, x, y, x + mapWidth, y + 64, 0.0F, 1.0F, 0.0F, 1.0F);
         float gridW = gridCols * tileSizePxInt + PAD_PX * 2f;
         float gridH = gridRows * tileSizePxInt + PAD_PX * 2f;
         float originX = x + Math.round((mapWidth - gridW) * 0.5f);

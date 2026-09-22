@@ -16,6 +16,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.decoration.ItemFrame;
 import net.minecraft.world.item.ItemStack;
@@ -63,6 +64,7 @@ public class FabricEventsRegistrar {
     public static void register() {
         // Event 1: Item frame interaction (placement or update)
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (hand != InteractionHand.MAIN_HAND) return InteractionResult.PASS;
             if (entity instanceof ItemFrame && player instanceof ServerPlayer) {
                 ItemFrame itemFrame = (ItemFrame) entity;
                 ServerPlayer serverPlayer = (ServerPlayer) player;
@@ -83,8 +85,8 @@ public class FabricEventsRegistrar {
                             .findFirst()
                             .orElse(null);
                         if (map != null) {
-                            placeCombinedMap(serverPlayer, itemFrame, map);
-                            if (!serverPlayer.isCreative()) {
+                            boolean placed = placeCombinedMap(serverPlayer, itemFrame, map);
+                            if (placed && !serverPlayer.isCreative()) {
                                 handItem.shrink(1);
                             }
                             return InteractionResult.SUCCESS;
@@ -104,6 +106,7 @@ public class FabricEventsRegistrar {
 
         // Event 3: Attack or breaking of item frames
         AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (hand != InteractionHand.MAIN_HAND) return InteractionResult.PASS;
             if (entity instanceof ItemFrame && player instanceof ServerPlayer) {
                 ItemFrame itemFrame = (ItemFrame) entity;
                 ServerPlayer serverPlayer = (ServerPlayer) player;
@@ -361,11 +364,11 @@ public class FabricEventsRegistrar {
         return null;
     }
 
-    private static void placeCombinedMap(ServerPlayer player, ItemFrame originFrame, FabricImageMap map) {
+    private static boolean placeCombinedMap(ServerPlayer player, ItemFrame originFrame, FabricImageMap map) {
         Direction facing = originFrame.getDirection();
         if (!facing.getAxis().isHorizontal()) {
             player.sendSystemMessage(Component.literal("§c[ImageFrame] Combined maps can only be placed on vertical walls."));
-            return;
+            return false;
         }
 
         Direction downDir = Direction.DOWN;
@@ -374,13 +377,13 @@ public class FabricEventsRegistrar {
         List<ItemFrame> grid = findItemFrameGrid((ServerLevel) player.level(), originFrame, facing, downDir, rightDir, map.width, map.height);
         if (grid == null) {
             player.sendSystemMessage(Component.literal("§c[ImageFrame] There are not enough empty adjacent item frames. A grid of " + map.width + "x" + map.height + " is required."));
-            return;
+            return false;
         }
 
         for (ItemFrame frame : grid) {
             if (!frame.getItem().isEmpty()) {
                 player.sendSystemMessage(Component.literal("§c[ImageFrame] One or more item frames in the grid already contain items."));
-                return;
+                return false;
             }
         }
 
@@ -414,6 +417,7 @@ public class FabricEventsRegistrar {
         }
 
         player.sendSystemMessage(Component.literal("§a[ImageFrame] Combined map \"" + map.name + "\" placed successfully!"));
+        return true;
     }
 
     private static void handleCombinedBreak(ServerPlayer player, ItemFrame brokenFrame, ItemStack mapItem) {

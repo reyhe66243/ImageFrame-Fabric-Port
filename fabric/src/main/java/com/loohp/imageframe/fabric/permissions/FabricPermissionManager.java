@@ -7,8 +7,15 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.PermissionCheck;
 import net.minecraft.server.permissions.PermissionLevel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class FabricPermissionManager {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger("imageframe-permissions");
+    private static final AtomicBoolean PERMISSION_PROVIDER_WARNED = new AtomicBoolean(false);
 
     public static final String PREFIX = "imageframe.";
 
@@ -55,12 +62,20 @@ public class FabricPermissionManager {
     /**
      * Check permission on CommandSourceStack with a fallback vanilla OP level.
      * Compatible with LuckPerms and fabric-permission-api-v1.
+     *
+     * If the installed permission provider throws (e.g. a broken/outdated
+     * permission mod), we log it once and fall back to the vanilla OP level
+     * instead of letting the exception break command/event handling.
      */
     public static boolean hasPermission(CommandSourceStack source, String permission, int defaultOpLevel) {
         Identifier id = toIdentifier(permission);
         PermissionLevel level = PermissionLevel.byId(Math.max(0, Math.min(defaultOpLevel, 4)));
         if (source instanceof PermissionContextOwner owner) {
-            return owner.checkPermission(id, level);
+            try {
+                return owner.checkPermission(id, level);
+            } catch (Throwable t) {
+                warnProviderFailure(permission, t);
+            }
         }
         return getVanillaCheck(defaultOpLevel).check(source.permissions());
     }
@@ -72,9 +87,20 @@ public class FabricPermissionManager {
         Identifier id = toIdentifier(permission);
         PermissionLevel level = PermissionLevel.byId(Math.max(0, Math.min(defaultOpLevel, 4)));
         if (player instanceof PermissionContextOwner owner) {
-            return owner.checkPermission(id, level);
+            try {
+                return owner.checkPermission(id, level);
+            } catch (Throwable t) {
+                warnProviderFailure(permission, t);
+            }
         }
         return getVanillaCheck(defaultOpLevel).check(player.permissions());
+    }
+
+    private static void warnProviderFailure(String permission, Throwable t) {
+        if (PERMISSION_PROVIDER_WARNED.compareAndSet(false, true)) {
+            LOGGER.warn("[ImageFrame] A permission provider failed while checking '{}'. Falling back to vanilla OP levels. "
+                    + "Update your permission mod (e.g. VanillaPermissions 0.2.5+) if this persists.", permission, t);
+        }
     }
 
     /**
