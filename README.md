@@ -18,7 +18,7 @@ This project is a hybrid (Universal) mod: it functions completely server-side fo
 
 ### Universal Architecture & Client Compatibility
 
-Use **this exact same mod JAR** on both the server and client. Do **not** use the original official client mod, as this port uses an updated, zero-lag networking protocol designed for Minecraft 1.21+.
+Use this exact same mod JAR on both the server and client. Do not use the original client mod, as this port relies on an updated, GIF-compatible networking architecture.
 
 *   **Vanilla Clients:** Can connect without installing any client-side mod. Maps will display smoothly in standard Minecraft resolution (128x128).
 *   **Modded Clients (with this mod):** Automatically perform a background handshake with the server to request native High-Definition (HD) image textures, instant HD GIF animation frame synchronization, and inventory hover tooltips.
