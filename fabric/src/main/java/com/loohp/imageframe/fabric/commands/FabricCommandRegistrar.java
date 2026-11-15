@@ -737,15 +737,13 @@ public class FabricCommandRegistrar {
                 FabricMapHelper.giveItemOrDrop(player, combinedItem);
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] Combined image map added to your inventory."), false);
             } else if (selectedFrames != null) {
-                if (FabricMapHelper.fillItemFrames(player, selectedFrames, map.mapIds)) {
+                if (FabricMapHelper.fillItemFrames(player, selectedFrames, map)) {
                     context.getSource().sendFailure(Component.literal("§c" + msg("imageframe.messages.item_frame_occupied")));
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] " + msg("imageframe.messages.selection.success", map.width, map.height)), false);
             } else {
-                for (int id : map.mapIds) {
-                    ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                    mapItem.set(DataComponents.MAP_ID, new MapId(id));
-                    FabricMapHelper.giveItemOrDrop(player, mapItem);
+                for (int i = 0; i < map.mapIds.size(); i++) {
+                    FabricMapHelper.giveItemOrDrop(player, FabricMapHelper.createMapItem(map, i));
                 }
                 context.getSource().sendSuccess(() -> Component.literal("§a[ImageFrame] ImageMap items added to your inventory."), false);
             }

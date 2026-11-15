@@ -64,3 +64,8 @@ InvisibleFrame:
 
   # Whether empty invisible item frames glow so players can locate them when no item is inside.
   GlowEmptyFrames: true
+
+Hooks:
+  Geyser:
+    # Enable this if your players on Bedrock (Geyser / Floodgate) are having a poor experience near animated imagemaps
+    DisableSmoothAnimationForBedrockPlayers: false

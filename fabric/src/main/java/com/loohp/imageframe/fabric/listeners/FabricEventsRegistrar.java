@@ -26,8 +26,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -49,7 +51,18 @@ public class FabricEventsRegistrar {
         }
     }
 
+    private static class CloudState {
+        final net.minecraft.world.entity.AreaEffectCloud cloud;
+        int conversionsRemaining;
+
+        CloudState(net.minecraft.world.entity.AreaEffectCloud cloud, int conversionsRemaining) {
+            this.cloud = cloud;
+            this.conversionsRemaining = conversionsRemaining;
+        }
+    }
+
     private static final Map<UUID, BrokenFrameInfo> brokenFrames = new ConcurrentHashMap<>();
+    private static final Map<UUID, CloudState> activeClouds = new ConcurrentHashMap<>();
 
     public static void registerBrokenInvisibleFrame(UUID uuid, double x, double y, double z) {
         brokenFrames.put(uuid, new BrokenFrameInfo(x, y, z));
@@ -74,6 +87,10 @@ public class FabricEventsRegistrar {
                 if (FabricImageMapManager.getInstance().isSelectionActive(serverPlayer.getUUID())) {
                     FabricImageMapManager.getInstance().handleItemFrameInteraction(serverPlayer, itemFrame);
                     return InteractionResult.SUCCESS;
+                }
+
+                if (FabricMapHelper.isItemFrameFixed(itemFrame)) {
+                    return InteractionResult.PASS;
                 }
 
                 // Placement of Combined maps (supports both modern FILLED_MAP and legacy PAPER items)
@@ -116,6 +133,10 @@ public class FabricEventsRegistrar {
                 if (FabricImageMapManager.getInstance().isSelectionActive(serverPlayer.getUUID())) {
                     FabricImageMapManager.getInstance().handleItemFrameInteraction(serverPlayer, itemFrame);
                     return InteractionResult.SUCCESS;
+                }
+
+                if (FabricMapHelper.isItemFrameFixed(itemFrame)) {
+                    return InteractionResult.PASS;
                 }
 
                 // Break linked combined frames
@@ -189,10 +210,35 @@ public class FabricEventsRegistrar {
                         }
                     }
                 }
+            } else if (entity instanceof net.minecraft.world.entity.AreaEffectCloud) {
+                net.minecraft.world.entity.AreaEffectCloud cloud = (net.minecraft.world.entity.AreaEffectCloud) entity;
+                int maxConversions = ImageFrameMod.instance.getInvisibleFrameMaxConversions();
+                if (maxConversions != 0) {
+                    activeClouds.put(cloud.getUUID(), new CloudState(cloud, maxConversions));
+                }
             }
         });
 
-        // Event 5: Global server tick events (Grindstone prevention and potion conversions)
+        // Event 4b: Entity unload events (Splash potion invisibility conversion and AreaEffectCloud cleanup)
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents.ENTITY_UNLOAD.register((entity, world) -> {
+            if (entity instanceof net.minecraft.world.entity.projectile.throwableitemprojectile.AbstractThrownPotion
+                    && !(entity instanceof net.minecraft.world.entity.projectile.throwableitemprojectile.ThrownLingeringPotion)) {
+                if (entity.getRemovalReason() == net.minecraft.world.entity.Entity.RemovalReason.DISCARDED) {
+                    net.minecraft.world.entity.projectile.throwableitemprojectile.AbstractThrownPotion potion =
+                            (net.minecraft.world.entity.projectile.throwableitemprojectile.AbstractThrownPotion) entity;
+                    if (hasInvisibilityEffect(potion.getItem())) {
+                        int maxConversions = ImageFrameMod.instance.getInvisibleFrameMaxConversions();
+                        if (maxConversions != 0) {
+                            convertNearbyItemFrames(world, potion.getBoundingBox().inflate(4.0, 2.0, 4.0), maxConversions);
+                        }
+                    }
+                }
+            } else if (entity instanceof net.minecraft.world.entity.AreaEffectCloud) {
+                activeClouds.remove(entity.getUUID());
+            }
+        });
+
+        // Event 5: Global server tick events (Grindstone prevention and AreaEffectCloud potion conversions)
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
             // A. Prevent combination in Grindstones
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -206,82 +252,111 @@ public class FabricEventsRegistrar {
                 }
             }
 
-            // B. Scan and convert splash potions / area effect clouds in all worlds
-            for (ServerLevel world : server.getAllLevels()) {
-                for (net.minecraft.world.entity.Entity entity : world.getAllEntities()) {
-                    if (entity.getClass().getSimpleName().contains("Potion")) {
-                        if (entity.isRemoved()) {
-                            try {
-                                ItemStack potionStack = (ItemStack) entity.getClass().getMethod("getItem").invoke(entity);
-                                if (potionStack != null && !potionStack.isEmpty()) {
-                                    net.minecraft.world.item.alchemy.PotionContents contents = potionStack.get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
-                                    if (contents != null) {
-                                        boolean hasInvis = false;
-                                        for (net.minecraft.world.effect.MobEffectInstance effect : contents.getAllEffects()) {
-                                            if (effect.getEffect() == net.minecraft.world.effect.MobEffects.INVISIBILITY) {
-                                                hasInvis = true;
-                                                break;
-                                            }
-                                        }
-                                        if (hasInvis) {
-                                            int maxConversions = ImageFrameMod.instance.getInvisibleFrameMaxConversions();
-                                            if (maxConversions != 0) {
-                                                int converted = 0;
-                                                net.minecraft.world.phys.AABB box = entity.getBoundingBox().inflate(4.0, 2.0, 4.0);
-                                                for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
-                                                    if (maxConversions > 0 && converted >= maxConversions) {
-                                                        break;
-                                                    }
-                                                    ItemStack stack = itemEntity.getItem();
-                                                    if (!stack.isEmpty() && (stack.is(Items.ITEM_FRAME) || stack.is(Items.GLOW_ITEM_FRAME))) {
-                                                        if (!FabricImageMapManager.isInvisibleItemFrame(stack)) {
-                                                            ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack);
-                                                            itemEntity.setItem(invisibleStack);
-                                                            world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
-                                                            converted++;
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (Exception ex) {
-                                LOGGER.error("Error processing ThrownPotion.getItem via reflection: ", ex);
-                            }
-                        }
-                    } else if (entity instanceof net.minecraft.world.entity.AreaEffectCloud) {
-                        net.minecraft.world.entity.AreaEffectCloud cloud = (net.minecraft.world.entity.AreaEffectCloud) entity;
-                        if (cloudHasInvisibility(cloud)) {
-                            int maxConversions = ImageFrameMod.instance.getInvisibleFrameMaxConversions();
-                            if (maxConversions != 0) {
-                                int converted = 0;
-                                net.minecraft.world.phys.AABB box = cloud.getBoundingBox();
-                                for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
-                                    if (maxConversions > 0 && converted >= maxConversions) {
-                                        break;
-                                    }
-                                    ItemStack stack = itemEntity.getItem();
-                                    if (!stack.isEmpty() && (stack.is(Items.ITEM_FRAME) || stack.is(Items.GLOW_ITEM_FRAME))) {
-                                        if (!FabricImageMapManager.isInvisibleItemFrame(stack)) {
-                                            ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack);
-                                            itemEntity.setItem(invisibleStack);
-                                            world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
-                                            converted++;
-                                        }
-                                    }
-                                }
+            // B. Convert nearby item frames around tracked AreaEffectClouds
+            if (!activeClouds.isEmpty()) {
+                Iterator<Map.Entry<UUID, CloudState>> it = activeClouds.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry<UUID, CloudState> entry = it.next();
+                    CloudState state = entry.getValue();
+                    net.minecraft.world.entity.AreaEffectCloud cloud = state.cloud;
+                    if (cloud == null || cloud.isRemoved() || !(cloud.level() instanceof ServerLevel)) {
+                        it.remove();
+                        continue;
+                    }
+                    if (cloud.tickCount % 5 == 0 && cloudHasInvisibility(cloud)) {
+                        ServerLevel world = (ServerLevel) cloud.level();
+                        int converted = convertNearbyItemFrames(world, cloud.getBoundingBox(), state.conversionsRemaining);
+                        if (state.conversionsRemaining > 0) {
+                            state.conversionsRemaining -= converted;
+                            if (state.conversionsRemaining <= 0) {
+                                it.remove();
                             }
                         }
                     }
                 }
             }
+
             // C. Update visible maps cache on the main thread for network optimization
-            FabricImageMapManager.getInstance().updateVisibleMapsCache(server);
+            if (server.getTickCount() % 5 == 0 && FabricImageMapManager.getInstance().hasAnimatedMaps()) {
+                FabricImageMapManager.getInstance().updateVisibleMapsCache(server);
+            }
         });
     }
 
+    private static boolean hasInvisibilityEffect(ItemStack potionStack) {
+        if (potionStack == null || potionStack.isEmpty()) {
+            return false;
+        }
+        net.minecraft.world.item.alchemy.PotionContents contents = potionStack.get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
+        if (contents == null) {
+            return false;
+        }
+        for (net.minecraft.world.effect.MobEffectInstance effect : contents.getAllEffects()) {
+            if (effect.getEffect() == net.minecraft.world.effect.MobEffects.INVISIBILITY) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int convertNearbyItemFrames(ServerLevel world, net.minecraft.world.phys.AABB box, int maxConversions) {
+        if (maxConversions == 0) {
+            return 0;
+        }
+        int converted = 0;
+        for (net.minecraft.world.entity.item.ItemEntity itemEntity : world.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class, box)) {
+            if (maxConversions > 0 && converted >= maxConversions) {
+                break;
+            }
+            ItemStack stack = itemEntity.getItem();
+            if (stack.isEmpty() || (!stack.is(Items.ITEM_FRAME) && !stack.is(Items.GLOW_ITEM_FRAME))) {
+                continue;
+            }
+            if (FabricImageMapManager.isInvisibleItemFrame(stack)) {
+                continue;
+            }
+            int count = stack.getCount();
+            int remaining = maxConversions > 0 ? maxConversions - converted : count;
+            if (remaining <= 0) {
+                break;
+            }
+            int toConvert = Math.min(count, remaining);
+            if (maxConversions > 0 && count > remaining) {
+                ItemStack convertedStack = stack.copy();
+                convertedStack.setCount(toConvert);
+                FabricMapHelper.withInvisibleItemFrameMeta(convertedStack);
+
+                stack.shrink(toConvert);
+                itemEntity.setItem(stack.copy());
+
+                net.minecraft.world.entity.item.ItemEntity extraEntity = new net.minecraft.world.entity.item.ItemEntity(
+                        world, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(), convertedStack);
+                extraEntity.setDeltaMovement(0, 0, 0);
+                world.addFreshEntity(extraEntity);
+            } else {
+                ItemStack invisibleStack = FabricMapHelper.withInvisibleItemFrameMeta(stack.copy());
+                itemEntity.setItem(invisibleStack);
+            }
+            world.playSound(null, itemEntity.getX(), itemEntity.getY(), itemEntity.getZ(),
+                    net.minecraft.sounds.SoundEvents.ENCHANTMENT_TABLE_USE, net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+            converted += toConvert;
+        }
+        return converted;
+    }
+
     private static boolean cloudHasInvisibility(net.minecraft.world.entity.AreaEffectCloud cloud) {
+        try {
+            net.minecraft.world.item.alchemy.PotionContents contents = cloud.get(net.minecraft.core.component.DataComponents.POTION_CONTENTS);
+            if (contents != null) {
+                for (net.minecraft.world.effect.MobEffectInstance effect : contents.getAllEffects()) {
+                    if (effect.getEffect() == net.minecraft.world.effect.MobEffects.INVISIBILITY) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        } catch (Exception ignored) {
+        }
         try {
             Object basePotion = null;
             try {
@@ -397,7 +472,7 @@ public class FabricEventsRegistrar {
                 foundCompleteGrid = true;
                 boolean empty = true;
                 for (ItemFrame frame : candidate) {
-                    if (!frame.getItem().isEmpty()) {
+                    if (FabricMapHelper.isItemFrameFixed(frame) || !frame.getItem().isEmpty()) {
                         empty = false;
                         break;
                     }
@@ -425,23 +500,10 @@ public class FabricEventsRegistrar {
             for (int x = 0; x < map.width; x++) {
                 int tileIndex = y * map.width + x;
                 ItemFrame frame = grid.get(tileIndex);
-                int mapId = map.mapIds.get(tileIndex);
 
-                ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-                mapItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(mapId));
-
-                net.minecraft.world.item.component.CustomData customData = mapItem.getOrDefault(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.EMPTY);
-                net.minecraft.nbt.CompoundTag tag = customData.copyTag();
-                tag.putInt(FilledMapItemInfo.KEY, map.index);
-                tag.putInt(FilledMapItemInfo.INDEX_KEY, tileIndex);
-
-                tag.putInt(CombinedMapItemInfo.KEY, map.index);
-                tag.putFloat(CombinedMapItemInfo.PLACEMENT_YAW_KEY, yaw);
-                tag.putIntArray(CombinedMapItemInfo.PLACEMENT_UUID_KEY, UUIDUtils.toIntArray(placementUuid));
-
-                mapItem.applyComponents(net.minecraft.core.component.DataComponentPatch.builder()
-                    .set(net.minecraft.core.component.DataComponents.CUSTOM_DATA, net.minecraft.world.item.component.CustomData.of(tag))
-                    .build());
+                ItemStack mapItem = FabricMapHelper.createMapItem(map, tileIndex);
+                CombinedMapItemInfo combinedInfo = new CombinedMapItemInfo(map.index, new CombinedMapItemInfo.PlacementInfo(yaw, placementUuid));
+                FabricMapHelper.withCombinedMapItemInfo(mapItem, combinedInfo);
 
                 frame.setItem(mapItem);
             }
@@ -455,9 +517,10 @@ public class FabricEventsRegistrar {
         net.minecraft.world.item.component.CustomData customData = mapItem.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
         if (customData == null) return;
         net.minecraft.nbt.CompoundTag tag = customData.copyTag();
-        if (!tag.contains(CombinedMapItemInfo.PLACEMENT_UUID_KEY)) return;
+        Optional<int[]> optUuid = tag.getIntArray(CombinedMapItemInfo.PLACEMENT_UUID_KEY);
+        if (optUuid.isEmpty()) return;
 
-        UUID placementUuid = UUIDUtils.fromIntArray(tag.getIntArray(CombinedMapItemInfo.PLACEMENT_UUID_KEY).get());
+        UUID placementUuid = UUIDUtils.fromIntArray(optUuid.get());
         int mapIndex = tag.getInt(CombinedMapItemInfo.KEY).orElse(-1);
 
         FabricImageMap map = FabricImageMapManager.getInstance().getMaps().values().stream()
@@ -468,19 +531,21 @@ public class FabricEventsRegistrar {
 
         ServerLevel world = (ServerLevel) brokenFrame.level();
         List<ItemFrame> linkedFrames = new ArrayList<>();
-        for (net.minecraft.world.entity.Entity entity : world.getAllEntities()) {
-            if (entity instanceof ItemFrame) {
-                ItemFrame frame = (ItemFrame) entity;
-                ItemStack item = frame.getItem();
-                if (!item.isEmpty() && item.is(Items.FILLED_MAP)) {
-                    net.minecraft.world.item.component.CustomData frameData = item.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
-                    if (frameData != null) {
-                        net.minecraft.nbt.CompoundTag fTag = frameData.copyTag();
-                        if (fTag.contains(CombinedMapItemInfo.PLACEMENT_UUID_KEY)) {
-                            UUID fUuid = UUIDUtils.fromIntArray(fTag.getIntArray(CombinedMapItemInfo.PLACEMENT_UUID_KEY).get());
-                            if (placementUuid.equals(fUuid)) {
-                                linkedFrames.add(frame);
-                            }
+        double searchRadius = Math.max(map.width, map.height) + 2.0;
+        for (ItemFrame frame : world.getEntitiesOfClass(ItemFrame.class, brokenFrame.getBoundingBox().inflate(searchRadius))) {
+            if (FabricMapHelper.isItemFrameFixed(frame)) {
+                continue;
+            }
+            ItemStack item = frame.getItem();
+            if (!item.isEmpty() && item.is(Items.FILLED_MAP)) {
+                net.minecraft.world.item.component.CustomData frameData = item.get(net.minecraft.core.component.DataComponents.CUSTOM_DATA);
+                if (frameData != null) {
+                    net.minecraft.nbt.CompoundTag fTag = frameData.copyTag();
+                    Optional<int[]> optFrameUuid = fTag.getIntArray(CombinedMapItemInfo.PLACEMENT_UUID_KEY);
+                    if (optFrameUuid.isPresent()) {
+                        UUID fUuid = UUIDUtils.fromIntArray(optFrameUuid.get());
+                        if (placementUuid.equals(fUuid)) {
+                            linkedFrames.add(frame);
                         }
                     }
                 }

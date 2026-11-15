@@ -4,6 +4,7 @@ import com.loohp.imageframe.fabric.language.FabricLanguageManager;
 import com.loohp.imageframe.fabric.nms.FabricMapHelper;
 import com.loohp.imageframe.fabric.utils.FabricMapColorPalette;
 import com.loohp.imageframe.utils.GifReader;
+import com.loohp.imageframe.utils.SizeLimitedByteArrayOutputStream;
 import com.loohp.platformscheduler.Scheduler;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -20,11 +21,17 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import net.minecraft.world.phys.AABB;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
 import java.awt.Graphics2D;
-import java.awt.Image;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.net.URL;
@@ -287,6 +294,14 @@ public class FabricImageMapManager {
                 }
                 json.add("mapdata", mapDataArray);
 
+                if (map.isAnimated && map.framesDelays != null && !map.framesDelays.isEmpty()) {
+                    com.google.gson.JsonArray delaysArray = new com.google.gson.JsonArray();
+                    for (Integer delay : map.framesDelays) {
+                        delaysArray.add(delay != null ? delay : 50);
+                    }
+                    json.add("delays", delaysArray);
+                }
+
                 pw.println(new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json));
                 pw.flush();
             }
@@ -338,6 +353,9 @@ public class FabricImageMapManager {
 
             String type = json.has("type") ? json.get("type").getAsString() : "";
             boolean animated = type.contains("animated");
+            int tilesWide = Math.max(1, map.width);
+            int tilesHigh = Math.max(1, map.height);
+            int tileCount = Math.min(mapDataArray.size(), tilesWide * tilesHigh);
 
             if (animated) {
                 com.google.gson.JsonObject firstTile = mapDataArray.get(0).getAsJsonObject();
@@ -351,7 +369,7 @@ public class FabricImageMapManager {
                 }
 
                 List<List<File>> tileFiles = new ArrayList<>();
-                for (int i = 0; i < mapDataArray.size(); i++) {
+                for (int i = 0; i < tileCount; i++) {
                     com.google.gson.JsonObject tileObj = mapDataArray.get(i).getAsJsonObject();
                     if (!tileObj.has("images")) {
                         return false;
@@ -371,49 +389,50 @@ public class FabricImageMapManager {
                     tileFiles.add(files);
                 }
 
-                List<byte[][]> framesColors = new ArrayList<>();
+                List<byte[][]> framesColors = new ArrayList<>(numFrames);
+                BufferedImage combined = new BufferedImage(tilesWide * 128, tilesHigh * 128, BufferedImage.TYPE_INT_ARGB);
                 for (int f = 0; f < numFrames; f++) {
-                    byte[][] frameTilesColors = new byte[mapDataArray.size()][16384];
-                    for (int i = 0; i < mapDataArray.size(); i++) {
-                        File imgFile = tileFiles.get(i).get(f);
-                        BufferedImage img = ImageIO.read(imgFile);
-                        if (img == null) {
-                            return false;
-                        }
-                        if (img.getWidth() != 128 || img.getHeight() != 128) {
-                            BufferedImage scaled = new BufferedImage(128, 128, BufferedImage.TYPE_INT_ARGB);
-                            Graphics2D g = scaled.createGraphics();
-                            g.drawImage(img.getScaledInstance(128, 128, Image.SCALE_SMOOTH), 0, 0, null);
-                            g.dispose();
-                            img = scaled;
-                        }
-                        byte[] tileColors = frameTilesColors[i];
-                        for (int px = 0; px < 128; px++) {
-                            for (int py = 0; py < 128; py++) {
-                                int argb = img.getRGB(px, py);
-                                int a = (argb >> 24) & 0xFF;
-                                int r = (argb >> 16) & 0xFF;
-                                int gVal = (argb >> 8) & 0xFF;
-                                int b = argb & 0xFF;
-                                tileColors[py * 128 + px] = FabricMapColorPalette.getClosestColorIndex(r, gVal, b, a);
+                    Graphics2D g = combined.createGraphics();
+                    try {
+                        g.setComposite(java.awt.AlphaComposite.Src);
+                        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                        for (int i = 0; i < tileCount; i++) {
+                            File imgFile = tileFiles.get(i).get(f);
+                            BufferedImage img = ImageIO.read(imgFile);
+                            if (img == null) {
+                                return false;
                             }
+                            g.drawImage(img, (i % tilesWide) * 128, (i / tilesWide) * 128, 128, 128, null);
                         }
+                    } finally {
+                        g.dispose();
                     }
-                    framesColors.add(frameTilesColors);
+                    framesColors.add(FabricMapColorPalette.convertImageToTiles(combined, tilesWide, tilesHigh, map.dithering));
                 }
 
                 map.isAnimated = true;
                 map.framesColors = new CopyOnWriteArrayList<>(framesColors);
-                List<Integer> delays = new ArrayList<>();
-                for (int f = 0; f < numFrames; f++) {
-                    delays.add(50);
+                List<Integer> delays = new ArrayList<>(numFrames);
+                if (json.has("delays") && json.get("delays").isJsonArray()) {
+                    com.google.gson.JsonArray delaysArr = json.get("delays").getAsJsonArray();
+                    if (delaysArr.size() == numFrames) {
+                        for (int f = 0; f < numFrames; f++) {
+                            delays.add(delaysArr.get(f).getAsInt());
+                        }
+                    }
+                }
+                if (delays.size() != numFrames) {
+                    delays.clear();
+                    for (int f = 0; f < numFrames; f++) {
+                        delays.add(50);
+                    }
                 }
                 map.framesDelays = delays;
                 return true;
 
             } else {
                 List<File> files = new ArrayList<>();
-                for (int i = 0; i < mapDataArray.size(); i++) {
+                for (int i = 0; i < tileCount; i++) {
                     com.google.gson.JsonObject tileObj = mapDataArray.get(i).getAsJsonObject();
                     String imgName = tileObj.has("image") ? tileObj.get("image").getAsString() : (i + ".png");
                     File imgFile = new File(folder, imgName);
@@ -426,33 +445,24 @@ public class FabricImageMapManager {
                     files.add(imgFile);
                 }
 
-                byte[][] frameTilesColors = new byte[mapDataArray.size()][16384];
-                for (int i = 0; i < mapDataArray.size(); i++) {
-                    File imgFile = files.get(i);
-                    BufferedImage img = ImageIO.read(imgFile);
-                    if (img == null) {
-                        return false;
-                    }
-                    if (img.getWidth() != 128 || img.getHeight() != 128) {
-                        BufferedImage scaled = new BufferedImage(128, 128, BufferedImage.TYPE_INT_ARGB);
-                        Graphics2D g = scaled.createGraphics();
-                        g.drawImage(img.getScaledInstance(128, 128, Image.SCALE_SMOOTH), 0, 0, null);
-                        g.dispose();
-                        img = scaled;
-                    }
-                    byte[] tileColors = frameTilesColors[i];
-                    for (int px = 0; px < 128; px++) {
-                        for (int py = 0; py < 128; py++) {
-                            int argb = img.getRGB(px, py);
-                            int a = (argb >> 24) & 0xFF;
-                            int r = (argb >> 16) & 0xFF;
-                            int gVal = (argb >> 8) & 0xFF;
-                            int b = argb & 0xFF;
-                            tileColors[py * 128 + px] = FabricMapColorPalette.getClosestColorIndex(r, gVal, b, a);
+                BufferedImage combined = new BufferedImage(tilesWide * 128, tilesHigh * 128, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g = combined.createGraphics();
+                try {
+                    g.setComposite(java.awt.AlphaComposite.Src);
+                    g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                    for (int i = 0; i < tileCount; i++) {
+                        File imgFile = files.get(i);
+                        BufferedImage img = ImageIO.read(imgFile);
+                        if (img == null) {
+                            return false;
                         }
+                        g.drawImage(img, (i % tilesWide) * 128, (i / tilesWide) * 128, 128, 128, null);
                     }
+                } finally {
+                    g.dispose();
                 }
 
+                byte[][] frameTilesColors = FabricMapColorPalette.convertImageToTiles(combined, tilesWide, tilesHigh, map.dithering);
                 map.isAnimated = false;
                 map.framesColors = new CopyOnWriteArrayList<>();
                 map.framesColors.add(frameTilesColors);
@@ -468,6 +478,9 @@ public class FabricImageMapManager {
     }
 
     private void saveLocalPNGFiles(FabricImageMap map, List<BufferedImage> images) {
+        if (images == null || images.isEmpty()) {
+            return;
+        }
         try {
             File dataFolder = new File(ImageFrameMod.instance.getConfigFolder(), "data");
             File folder = new File(dataFolder, String.valueOf(map.index));
@@ -476,13 +489,9 @@ public class FabricImageMapManager {
             int targetWidth = map.width * 128;
             int targetHeight = map.height * 128;
 
-            List<BufferedImage> scaledFrames = new ArrayList<>();
+            List<BufferedImage> scaledFrames = new ArrayList<>(images.size());
             for (BufferedImage rawImg : images) {
-                BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = scaled.createGraphics();
-                g.drawImage(rawImg.getScaledInstance(targetWidth, targetHeight, Image.SCALE_SMOOTH), 0, 0, null);
-                g.dispose();
-                scaledFrames.add(scaled);
+                scaledFrames.add(scaleTo(rawImg, targetWidth, targetHeight));
             }
 
             if (map.isAnimated && scaledFrames.size() > 1) {
@@ -615,8 +624,8 @@ public class FabricImageMapManager {
         List<ItemFrame> frames = level.getEntitiesOfClass(ItemFrame.class, box);
         Direction dir = corner1.getDirection();
 
-        // Filter by the same item frame direction
-        frames.removeIf(f -> !f.getDirection().equals(dir));
+        // Filter by the same item frame direction and skip fixed item frames
+        frames.removeIf(f -> !f.getDirection().equals(dir) || FabricMapHelper.isItemFrameFixed(f));
 
         // Sort frames from top to bottom, left to right (perspective-based)
         if (dir.getAxis().isHorizontal()) {
@@ -880,34 +889,16 @@ public class FabricImageMapManager {
         // Process each frame and crop into tiles
         int targetWidth = map.width * 128;
         int targetHeight = map.height * 128;
+        List<BufferedImage> scaledFrames = new ArrayList<>(downloaded.images.size());
 
         for (BufferedImage rawImg : downloaded.images) {
             BufferedImage scaled = scaleTo(rawImg, targetWidth, targetHeight);
-            byte[][] frameTilesColors = new byte[map.mapIds.size()][16384];
-
-            for (int y = 0; y < map.height; y++) {
-                for (int x = 0; x < map.width; x++) {
-                    int tileIndex = y * map.width + x;
-                    byte[] tileColors = frameTilesColors[tileIndex];
-
-                    for (int px = 0; px < 128; px++) {
-                        for (int py = 0; py < 128; py++) {
-                            int argb = scaled.getRGB(x * 128 + px, y * 128 + py);
-                            int a = (argb >> 24) & 0xFF;
-                            int r = (argb >> 16) & 0xFF;
-                            int gVal = (argb >> 8) & 0xFF;
-                            int b = argb & 0xFF;
-
-                            tileColors[py * 128 + px] = FabricMapColorPalette.getClosestColorIndex(r, gVal, b, a);
-                        }
-                    }
-                }
-            }
-
+            scaledFrames.add(scaled);
+            byte[][] frameTilesColors = FabricMapColorPalette.convertImageToTiles(scaled, map.width, map.height, map.dithering);
             map.framesColors.add(frameTilesColors);
         }
 
-        return downloaded.images;
+        return scaledFrames;
     }
 
     private static class DownloadedImage {
@@ -922,41 +913,98 @@ public class FabricImageMapManager {
         }
     }
 
+    private URLConnection openImageConnection(String url, int timeout) throws Exception {
+        URLConnection conn = new URL(url).openConnection();
+        conn.setUseCaches(false);
+        conn.setDefaultUseCaches(false);
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+        conn.setConnectTimeout(timeout);
+        conn.setReadTimeout(timeout);
+        return conn;
+    }
+
     private DownloadedImage downloadImage(String url) throws Exception {
         if (url == null || url.trim().isEmpty()) {
             throw new Exception("Map has no URL specified and no local image files were found.");
         }
 
-        URLConnection conn = new URL(url).openConnection();
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-        int timeout = ImageFrameMod.instance.getMaxProcessingTime() * 1000;
-        conn.setConnectTimeout(timeout);
-        conn.setReadTimeout(timeout);
+        int configuredTimeout = ImageFrameMod.instance != null ? ImageFrameMod.instance.getMaxProcessingTime() : 60;
+        int timeout = (configuredTimeout > 0 ? configuredTimeout : 30) * 1000;
+        long maxFileSize = ImageFrameMod.instance != null ? ImageFrameMod.instance.getMaxImageFileSize() : 52428800L;
+        long effectiveLimit = maxFileSize > 0 ? maxFileSize : Long.MAX_VALUE;
 
-        long maxFileSize = ImageFrameMod.instance.getMaxImageFileSize();
+        URLConnection conn = openImageConnection(url, timeout);
+        String contentType = conn.getContentType();
+
+        // Resolve HTML pages (e.g. Imgur/Tenor links) via OpenGraph or first <img>
+        if (contentType != null && contentType.toLowerCase().contains("text/html")) {
+            String resolvedUrl = null;
+            try (InputStream htmlIn = conn.getInputStream()) {
+                Document doc = Jsoup.parse(htmlIn, null, url);
+                Element ogImage = doc.selectFirst("meta[property=og:image]");
+                if (ogImage != null) {
+                    resolvedUrl = ogImage.absUrl("content");
+                    if (resolvedUrl.isEmpty()) {
+                        resolvedUrl = ogImage.attr("content");
+                    }
+                }
+                if (resolvedUrl == null || resolvedUrl.isEmpty()) {
+                    Element img = doc.selectFirst("img[src]");
+                    if (img != null) {
+                        resolvedUrl = img.absUrl("src");
+                    }
+                }
+            }
+            if (resolvedUrl != null && !resolvedUrl.trim().isEmpty()) {
+                conn = openImageConnection(resolvedUrl.trim(), timeout);
+                contentType = conn.getContentType();
+            } else {
+                conn = openImageConnection(url, timeout);
+            }
+        }
+
         long len = conn.getContentLengthLong();
         if (len > 0 && maxFileSize > 0 && len > maxFileSize) {
             throw new Exception("Image file size (" + len + " bytes) exceeds configured limit (" + maxFileSize + " bytes).");
         }
 
-        // Attempt to detect if it's a GIF
-        boolean isGif = url.toLowerCase().contains(".gif") || url.toLowerCase().contains("gif");
+        byte[] rawBytes;
+        try (InputStream in = conn.getInputStream()) {
+            SizeLimitedByteArrayOutputStream buffer = new SizeLimitedByteArrayOutputStream(effectiveLimit);
+            byte[] chunk = new byte[8192];
+            int n;
+            while ((n = in.read(chunk)) != -1) {
+                buffer.write(chunk, 0, n);
+            }
+            rawBytes = buffer.toByteArray();
+        }
+
+        boolean isGif = isGifData(rawBytes, contentType);
         List<BufferedImage> images = new ArrayList<>();
         List<Integer> delays = new ArrayList<>();
 
-        try (InputStream in = conn.getInputStream()) {
-            if (isGif) {
-                List<GifReader.ImageFrame> frames = GifReader.readGif(in, (int) Math.min(Integer.MAX_VALUE, maxFileSize)).get();
-                for (GifReader.ImageFrame f : frames) {
-                    images.add(f.getImage());
-                    delays.add(f.getDelay());
+        if (isGif) {
+            try {
+                List<GifReader.ImageFrame> frames = GifReader.readGif(new ByteArrayInputStream(rawBytes), effectiveLimit).get();
+                if (frames != null) {
+                    for (GifReader.ImageFrame f : frames) {
+                        if (f.getImage() != null) {
+                            images.add(f.getImage());
+                            delays.add(f.getDelay());
+                        }
+                    }
                 }
-            } else {
-                BufferedImage img = ImageIO.read(in);
-                if (img != null) {
-                    images.add(img);
-                    delays.add(0);
-                }
+            } catch (Exception ignored) {
+                images.clear();
+                delays.clear();
+            }
+        }
+
+        if (images.isEmpty()) {
+            BufferedImage img = ImageIO.read(new ByteArrayInputStream(rawBytes));
+            if (img != null) {
+                images.add(img);
+                delays.add(0);
             }
         }
 
@@ -967,14 +1015,45 @@ public class FabricImageMapManager {
         return new DownloadedImage(images, delays, isGif && images.size() > 1);
     }
 
+    private boolean isGifData(byte[] rawBytes, String contentType) {
+        if (rawBytes.length >= 6
+                && rawBytes[0] == 'G' && rawBytes[1] == 'I' && rawBytes[2] == 'F'
+                && rawBytes[3] == '8' && (rawBytes[4] == '7' || rawBytes[4] == '9') && rawBytes[5] == 'a') {
+            return true;
+        }
+        if (contentType != null && contentType.toLowerCase().contains("gif")) {
+            return true;
+        }
+        try (ImageInputStream iis = ImageIO.createImageInputStream(new ByteArrayInputStream(rawBytes))) {
+            if (iis != null) {
+                Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
+                if (readers.hasNext()) {
+                    ImageReader reader = readers.next();
+                    try {
+                        return "gif".equalsIgnoreCase(reader.getFormatName());
+                    } finally {
+                        reader.dispose();
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
     private BufferedImage scaleTo(BufferedImage source, int width, int height) {
         if (source.getWidth() == width && source.getHeight() == height) {
             return source;
         }
         BufferedImage scaled = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = scaled.createGraphics();
-        g.drawImage(source.getScaledInstance(width, height, Image.SCALE_SMOOTH), 0, 0, null);
-        g.dispose();
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+            g.drawImage(source, 0, 0, width, height, null);
+        } finally {
+            g.dispose();
+        }
         return scaled;
     }
 
@@ -1002,7 +1081,7 @@ public class FabricImageMapManager {
      * and their map item is given to the player instead).
      */
     public void fillItemFrames(ServerPlayer player, List<ItemFrame> frames, FabricImageMap map) {
-        if (FabricMapHelper.fillItemFrames(player, frames, map.mapIds)) {
+        if (FabricMapHelper.fillItemFrames(player, frames, map)) {
             player.sendSystemMessage(Component.literal("§c[ImageFrame] " + FabricLanguageManager.getInstance().get("imageframe.messages.item_frame_occupied")));
         }
     }
@@ -1369,12 +1448,19 @@ public class FabricImageMapManager {
         }
 
         // Give all separate maps
-        for (int id : map.mapIds) {
-            ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
-            mapItem.set(net.minecraft.core.component.DataComponents.MAP_ID, new MapId(id));
-            FabricMapHelper.giveItemOrDrop(player, mapItem);
+        for (int i = 0; i < map.mapIds.size(); i++) {
+            FabricMapHelper.giveItemOrDrop(player, FabricMapHelper.createMapItem(map, i));
         }
         player.sendSystemMessage(Component.literal("§a[ImageFrame] Image maps have been added to your inventory."));
+    }
+
+    public boolean hasAnimatedMaps() {
+        for (FabricImageMap map : maps.values()) {
+            if (map.isAnimated && !map.isPaused && map.framesColors != null && map.framesColors.size() > 1) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private final Map<UUID, Set<Integer>> playerVisibleMapsCache = new ConcurrentHashMap<>();
@@ -1437,11 +1523,13 @@ public class FabricImageMapManager {
                         continue;
                     }
 
-                    int delay = map.framesDelays.get(map.currentFrameIndex);
+                    int frameIdx = map.currentFrameIndex;
+                    int delay = (map.framesDelays != null && frameIdx >= 0 && frameIdx < map.framesDelays.size())
+                            ? map.framesDelays.get(frameIdx) : 100;
                     if (delay <= 0) delay = 100; // Default to 100ms
 
                     if (now - map.lastFrameUpdate >= delay) {
-                        map.currentFrameIndex = (map.currentFrameIndex + 1) % map.framesColors.size();
+                        map.currentFrameIndex = (frameIdx + 1) % map.framesColors.size();
                         map.lastFrameUpdate = now;
 
                         // Update MapItemSavedData in memory and send packets
@@ -1464,16 +1552,27 @@ public class FabricImageMapManager {
         ServerLevel overworld = playerListSource().getServer().getLevel(Level.OVERWORLD);
         if (overworld == null) return;
 
-        byte[][] frameColors = map.framesColors.get(map.currentFrameIndex);
+        int frameIndex = map.currentFrameIndex;
+        if (map.framesColors == null || frameIndex < 0 || frameIndex >= map.framesColors.size()) {
+            return;
+        }
+        byte[][] frameColors = map.framesColors.get(frameIndex);
+        int tiles = Math.min(map.mapIds.size(), frameColors.length);
+        boolean disableBedrock = ImageFrameMod.instance != null && ImageFrameMod.instance.isDisableSmoothAnimationForBedrockPlayers();
 
-        for (int i = 0; i < map.mapIds.size(); i++) {
+        for (int i = 0; i < tiles; i++) {
             int id = map.mapIds.get(i);
-            MapItemSavedData savedData = getOrCreateMapData(overworld, id);
-            FabricMapHelper.setColors(savedData, frameColors[i]);
+            MapItemSavedData savedData = overworld.getMapData(new MapId(id));
+            if (savedData != null) {
+                savedData.colors = frameColors[i];
+            }
 
             // Send the packet only to players who are watching this map
             ClientboundMapItemDataPacket packet = FabricMapHelper.createMapPacket(id, frameColors[i], null);
             for (ServerPlayer player : playerListSource().getPlayers()) {
+                if (disableBedrock && ImageFrameMod.instance.isBedrockPlayer(player.getUUID())) {
+                    continue;
+                }
                 Set<Integer> visibleIds = playerVisibleMapsCache.get(player.getUUID());
                 if (visibleIds != null && visibleIds.contains(id)) {
                     FabricMapHelper.sendPacket(player, packet);
@@ -1482,7 +1581,7 @@ public class FabricImageMapManager {
         }
 
         // Broadcast frame update signal to HD clients for instant zero-lag HD animation
-        com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastFrameUpdate(map, map.currentFrameIndex);
+        com.loohp.imageframe.fabric.network.ImageFrameNetworkHandler.broadcastFrameUpdate(map, frameIndex);
     }
 
     private net.minecraft.server.players.PlayerList playerListSource() {

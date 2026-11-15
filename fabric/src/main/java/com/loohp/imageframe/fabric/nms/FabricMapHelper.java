@@ -1,5 +1,7 @@
 package com.loohp.imageframe.fabric.nms;
 
+import com.loohp.imageframe.fabric.FabricImageMapManager.FabricImageMap;
+import com.loohp.imageframe.fabric.ImageFrameMod;
 import com.loohp.imageframe.objectholders.CombinedMapItemInfo;
 import com.loohp.imageframe.objectholders.FilledMapItemInfo;
 import com.loohp.imageframe.utils.UUIDUtils;
@@ -8,6 +10,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.component.DataComponentPatch;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.ClientboundMapItemDataPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
@@ -25,6 +28,7 @@ import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapId;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -40,17 +44,51 @@ public class FabricMapHelper {
 
     public static final int COLOR_ARRAY_LENGTH = 16384;
 
+    private static final Field LOCKED_FIELD;
+    private static final Field FIXED_FIELD;
+
+    static {
+        Field locked = null;
+        try {
+            locked = MapItemSavedData.class.getDeclaredField("locked");
+            locked.setAccessible(true);
+        } catch (Throwable t) {
+            ImageFrameMod.LOGGER.warn("[ImageFrame] Could not reflect MapItemSavedData.locked field: {}", t.getMessage());
+        }
+        LOCKED_FIELD = locked;
+
+        Field fixed = null;
+        try {
+            fixed = ItemFrame.class.getDeclaredField("fixed");
+            fixed.setAccessible(true);
+        } catch (Throwable t) {
+            ImageFrameMod.LOGGER.warn("[ImageFrame] Could not reflect ItemFrame.fixed field: {}", t.getMessage());
+        }
+        FIXED_FIELD = fixed;
+    }
+
+    public static boolean isItemFrameFixed(ItemFrame itemFrame) {
+        if (itemFrame == null || FIXED_FIELD == null) {
+            return false;
+        }
+        try {
+            return FIXED_FIELD.getBoolean(itemFrame);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
     public static void setColors(MapItemSavedData mapData, byte[] colors) {
         if (colors.length != COLOR_ARRAY_LENGTH) {
             throw new IllegalArgumentException("colors array length must be " + COLOR_ARRAY_LENGTH);
         }
         mapData.colors = colors;
-        try {
-            java.lang.reflect.Field lockedField = MapItemSavedData.class.getDeclaredField("locked");
-            lockedField.setAccessible(true);
-            lockedField.setBoolean(mapData, true);
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (LOCKED_FIELD != null) {
+            try {
+                LOCKED_FIELD.setBoolean(mapData, true);
+            } catch (Throwable e) {
+                ImageFrameMod.LOGGER.debug("[ImageFrame] Failed to lock MapItemSavedData: {}", e.getMessage());
+            }
         }
         mapData.setDirty();
     }
@@ -203,6 +241,48 @@ public class FabricMapHelper {
         }
     }
 
+    public static ItemStack createMapItem(FabricImageMap map, int tileIndex) {
+        ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
+        mapItem.set(DataComponents.MAP_ID, new MapId(map.mapIds.get(tileIndex)));
+        withFilledMapItemInfo(mapItem, new FilledMapItemInfo(map.index, tileIndex));
+
+        String format = ImageFrameMod.instance != null ? ImageFrameMod.instance.getMapItemFormat() : null;
+        if (format != null && !format.trim().isEmpty()) {
+            String formattedName = format.replace('&', '§')
+                    .replace("{ImageID}", String.valueOf(map.index))
+                    .replace("{Name}", map.name)
+                    .replace("{X}", String.valueOf(tileIndex % map.width))
+                    .replace("{Y}", String.valueOf(tileIndex / map.width))
+                    .replace("{Width}", String.valueOf(map.width))
+                    .replace("{Height}", String.valueOf(map.height));
+            mapItem.set(DataComponents.CUSTOM_NAME, Component.literal(formattedName));
+        }
+        return mapItem;
+    }
+
+    /**
+     * Fills empty item frames with the given map's tiles.
+     * Spigot parity: fixed or occupied frames are left untouched and their map item is given to the player instead.
+     *
+     * @return true if at least one frame was already occupied or fixed
+     */
+    public static boolean fillItemFrames(ServerPlayer player, List<ItemFrame> frames, FabricImageMap map) {
+        boolean occupiedFound = false;
+        int tiles = Math.min(frames.size(), map.mapIds.size());
+        for (int i = 0; i < tiles; i++) {
+            ItemFrame frame = frames.get(i);
+            ItemStack mapItem = createMapItem(map, i);
+
+            if (isItemFrameFixed(frame) || !frame.getItem().isEmpty()) {
+                giveItemOrDrop(player, mapItem);
+                occupiedFound = true;
+                continue;
+            }
+            frame.setItem(mapItem);
+        }
+        return occupiedFound;
+    }
+
     /**
      * Fills empty item frames with the given map IDs.
      * Spigot parity: occupied frames are left untouched and their map item is given to the player instead.
@@ -217,7 +297,7 @@ public class FabricMapHelper {
             ItemStack mapItem = new ItemStack(Items.FILLED_MAP);
             mapItem.set(DataComponents.MAP_ID, new MapId(mapIds.get(i)));
 
-            if (!frame.getItem().isEmpty()) {
+            if (isItemFrameFixed(frame) || !frame.getItem().isEmpty()) {
                 giveItemOrDrop(player, mapItem);
                 occupiedFound = true;
                 continue;

@@ -38,21 +38,23 @@ public class ItemMixin {
                 cir.setReturnValue(Optional.of(new PaintingTooltipComponent(paintingVariant)));
                 cir.cancel();
             }
-        } else if (ImageFrameClientHandler.previewMapsInTooltip && Items.PAPER.equals(item)) {
+        } else if (ImageFrameClientHandler.previewMapsInTooltip && (Items.PAPER.equals(item) || Items.FILLED_MAP.equals(item))) {
             CustomData customDataComponent = stack.get(DataComponents.CUSTOM_DATA);
             if (customDataComponent != null) {
                 CompoundTag tag = customDataComponent.copyTag();
                 Optional<Integer> optIndex = tag.getInt(KEY);
-                if (optIndex.isPresent()) {
+                if (optIndex.isPresent() && !tag.contains("PlacementUUID")) {
                     cir.setReturnValue(Optional.of(new ImageMapTooltipComponent(optIndex.get())));
                     cir.cancel();
+                    return;
                 }
             }
-        } else if (ImageFrameClientHandler.previewMapsInTooltip && Items.FILLED_MAP.equals(item)) {
-            MapId mapIdComponent = stack.get(DataComponents.MAP_ID);
-            if (mapIdComponent != null) {
-                cir.setReturnValue(Optional.of(new FilledMapTooltipComponent(mapIdComponent.id())));
-                cir.cancel();
+            if (Items.FILLED_MAP.equals(item)) {
+                MapId mapIdComponent = stack.get(DataComponents.MAP_ID);
+                if (mapIdComponent != null) {
+                    cir.setReturnValue(Optional.of(new FilledMapTooltipComponent(mapIdComponent.id())));
+                    cir.cancel();
+                }
             }
         }
     }

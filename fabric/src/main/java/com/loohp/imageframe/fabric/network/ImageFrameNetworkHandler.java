@@ -3,6 +3,7 @@ package com.loohp.imageframe.fabric.network;
 import com.loohp.imageframe.fabric.FabricImageMapManager;
 import com.loohp.imageframe.fabric.FabricImageMapManager.FabricImageMap;
 import com.loohp.imageframe.fabric.ImageFrameMod;
+import com.loohp.imageframe.fabric.nms.FabricMapHelper;
 import com.loohp.imageframe.fabric.payload.*;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -16,6 +17,7 @@ import net.minecraft.server.level.ServerPlayer;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -175,6 +177,20 @@ public class ImageFrameNetworkHandler {
 
         IntList mapIds = new IntArrayList(map.mapIds);
         ServerPlayNetworking.send(player, new ClientboundImageMapDetailsResponse(index, map.width, map.height, mapIds));
+
+        if (map.framesColors != null && !map.framesColors.isEmpty()) {
+            int frameIdx = Math.max(0, Math.min(map.currentFrameIndex, map.framesColors.size() - 1));
+            byte[][] frameColors = map.framesColors.get(frameIdx);
+            if (frameColors != null) {
+                int tiles = Math.min(map.mapIds.size(), frameColors.length);
+                for (int i = 0; i < tiles; i++) {
+                    byte[] colors = frameColors[i];
+                    if (colors != null && colors.length == FabricMapHelper.COLOR_ARRAY_LENGTH) {
+                        FabricMapHelper.sendPacket(player, FabricMapHelper.createMapPacket(map.mapIds.get(i), colors, Collections.emptyList()));
+                    }
+                }
+            }
+        }
     }
 
     /**

@@ -10,8 +10,8 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
@@ -97,7 +97,7 @@ public class ImageFrameClientHandler implements ClientModInitializer {
                             Optional<Integer> opt = payload.multipart();
                             byte[] data = payload.data();
                             if (opt.isPresent()) {
-                                MultipartHdMapInfo info = new MultipartHdMapInfo();
+                                MultipartHdMapInfo info = new MultipartHdMapInfo(frameIndex, totalFrames);
                                 info.put(0, data);
                                 pendingMultipart.put(opt.get(), info);
                             } else {
@@ -152,14 +152,27 @@ public class ImageFrameClientHandler implements ClientModInitializer {
                             }
                             if (info.isCompleted()) {
                                 pendingMultipart.invalidate(multipartId);
+                                int frameIndex = info.getFrameIndex();
+                                int totalFrames = info.getTotalFrames();
                                 NativeImage nativeImage = NativeImage.read(info.complete());
-                                Identifier id = Identifier.fromNamespaceAndPath("imageframe", "hdmap_" + mapId + "_f0");
+                                Identifier id = Identifier.fromNamespaceAndPath("imageframe", "hdmap_" + mapId + "_f" + frameIndex);
                                 DynamicTexture tex = new DynamicTexture(id::getPath, nativeImage);
                                 Minecraft.getInstance().getTextureManager().register(id, tex);
                                 
                                 Map<Integer, Identifier> frameMap = loadedHdFrameTextures.computeIfAbsent(mapId, k -> new HashMap<>());
-                                frameMap.put(0, id);
+                                frameMap.put(frameIndex, id);
                                 loadedHdImages.put(mapId, Optional.of(id));
+
+                                // Pre-fetch missing frames if animated GIF
+                                if (totalFrames > 1 && frameMap.size() < totalFrames) {
+                                    for (int f = 0; f < totalFrames; f++) {
+                                        if (!frameMap.containsKey(f)) {
+                                            if (currentServerSupported.get() || ClientPlayNetworking.canSend(ServerboundHdImageRequest.ID)) {
+                                                ClientPlayNetworking.send(new ServerboundHdImageRequest(mapId, f));
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     } catch (IOException e) {
@@ -207,10 +220,11 @@ public class ImageFrameClientHandler implements ClientModInitializer {
             });
         });
 
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            Minecraft.getInstance().execute(() -> {
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            client.execute(() -> {
                 imageMapData.clear();
                 activeMapFrameIndex.clear();
+                pendingMultipart.invalidateAll();
                 for (Map<Integer, Identifier> frameMap : loadedHdFrameTextures.values()) {
                     for (Identifier id : frameMap.values()) {
                         Minecraft.getInstance().getTextureManager().release(id);

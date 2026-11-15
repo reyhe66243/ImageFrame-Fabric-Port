@@ -12,10 +12,26 @@ public class MultipartHdMapInfo {
 
     private final Int2ObjectMap<byte[]> buffer;
     private final AtomicInteger lastIndex;
+    private final int frameIndex;
+    private final int totalFrames;
 
     public MultipartHdMapInfo() {
+        this(0, 1);
+    }
+
+    public MultipartHdMapInfo(int frameIndex, int totalFrames) {
         this.buffer = new Int2ObjectArrayMap<>();
         this.lastIndex = new AtomicInteger(0);
+        this.frameIndex = frameIndex;
+        this.totalFrames = totalFrames;
+    }
+
+    public int getFrameIndex() {
+        return frameIndex;
+    }
+
+    public int getTotalFrames() {
+        return totalFrames;
     }
 
     public void put(int index, byte[] data) {
